@@ -1,19 +1,21 @@
 # File
 
 File is a file access package written in Go.  It can access files on
-local filesystems, HDFS and an in-memory filesystem designed for unit
-testing.
+
+1. local filesystems,
+2. HDFS, and
+3. an [in-memory filesystem](https://github.com/wangkuiyi/file/tree/master/inmemfs) designed for unit testing.
 
 ## Simple API
 
 There are not APIs like Open, Read, Write, Close.  Instead, there are
 basically only two functions in File:
 
-  1. *Create* opens a new file or truncates an existing for writing.
+  1. **Create** opens a new file or truncates an existing for writing.
   It returns an `io.WriteCloser`.  Close it after writing to identify
   the EOF.
 
-  2. *Open* opens an exisiting file for reading.  It returns an
+  2. **Open** opens an exisiting file for reading.  It returns an
   `io.ReadCloser`.
 
 ## Examples
