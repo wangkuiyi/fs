@@ -4,6 +4,23 @@ File is a file access package written in Go.  It can access files on
 local filesystems, HDFS and an in-memory filesystem designed for unit
 testing.
 
+## Simple API
+
+There are not APIs like Open, Read, Write, Close.  Instead, there are
+basically only two functions in File:
+
+  1. *Create* opens a new file or truncates an existing for writing.
+  It returns an `io.WriteCloser`.  Close it after writing to identify
+  the EOF.
+
+  2. *Open* opens an exisiting file for reading.  It returns an
+  `io.ReadCloser`.
+
+## Examples
+
+Please refer to http://godoc.org/github.com/wangkuiyi/file for
+documents and examples.
+
 ## Accessing HDFS
 
 I used to use https://github.com/zyxar/hdfs.go in accessing HDFS from
@@ -23,8 +40,3 @@ namenodes as HTTP requests.  This enables the development of HDFS
 clients in various programming languages, and
 https://github.com/vladimirvivien/gowfs is a Web HDFS client written
 in Go.  File uses https://github.com/vladimirvivien/gowfs.
-
-## Documents and Examples
-
-Please refer to http://godoc.org/github.com/wangkuiyi/file for
-documents and examples.
