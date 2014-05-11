@@ -1,6 +1,6 @@
 // Package file provide uniform interface to access local filesystem,
 // Hadoop filesystem (HDFS), and an in-memory filesystem define in
-// https://github.com/wangkuiyi/phoenix/file/inmemfs.  It uses WebHDFS
+// https://github.com/wangkuiyi/file/inmemfs.  It uses WebHDFS
 // interface defined in
 // http://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/WebHDFS.html
 // to access HDFS.  In order to connect to HDFS, you need to manually
@@ -8,7 +8,7 @@
 /*
 	import (
 	  "flag"
-	  "github.com/wangkuiyi/phoenix/file"
+	  "github.com/wangkuiyi/file"
 	)
 
 	func main() {
@@ -75,7 +75,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/vladimirvivien/gowfs"
-	"github.com/wangkuiyi/phoenix/file/inmemfs"
+	"github.com/wangkuiyi/file/inmemfs"
 	"io"
 	"log"
 	"os"
