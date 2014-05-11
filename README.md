@@ -43,3 +43,23 @@ This enables the development of HDFS clients in various programming
 languages, and [gowfs](https://github.com/vladimirvivien/gowfs) is a
 Web HDFS client written in Go.  File uses
 [gowfs](https://github.com/vladimirvivien/gowfs).
+
+## Install
+
+Installation is very simple.  After setting environment variable
+`GOPATH`, checkout most recent source code using `go get`:
+
+    go get github.com/wangkuiyi/file
+
+You can run unit tests by
+
+    go test
+
+This tests operations on local filesystems, HDFS and in-memory
+filesystem.  If you have not yet set up an HDFS on localhost, you
+might want to disable operations on HDFS by:
+
+    DISABLE_HDFS_TEST go test
+
+For how to setup an HDFS for development and test, please refer to
+http://godoc.org/github.com/wangkuiyi/file.
