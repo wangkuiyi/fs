@@ -77,6 +77,7 @@ import (
 	"github.com/vladimirvivien/gowfs"
 	"github.com/wangkuiyi/file/inmemfs"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -214,6 +215,50 @@ func Open(name string) (io.ReadCloser, error) {
 			return nil, CannotOpenFile
 		}
 		return r, nil
+	}
+	return nil, UnknownFilesystemType
+}
+
+type Info struct {
+	Name  string
+	Size  int64
+	IsDir bool
+}
+
+func List(name string) ([]Info, error) {
+	switch {
+	case strings.HasPrefix(name, localPrefix):
+		is, e := ioutil.ReadDir(strings.TrimPrefix(name, localPrefix))
+		if e != nil {
+			return nil, e
+		}
+		if len(is) > 0 {
+			ss := make([]Info, len(is))
+			for i, s := range is {
+				ss[i].Name = s.Name()
+				ss[i].Size = s.Size()
+				ss[i].IsDir = s.IsDir()
+			}
+			return ss, nil
+		}
+		return nil, nil
+	case strings.HasPrefix(name, hdfsPrefix):
+		is, e := hdfs.ListStatus(gowfs.Path{Name: strings.TrimPrefix(name, hdfsPrefix)})
+		if e != nil {
+			return nil, e
+		}
+		if len(is) > 0 {
+			ss := make([]Info, len(is))
+			for i, s := range is {
+				ss[i].Name = s.PathSuffix
+				ss[i].Size = s.Length
+				ss[i].IsDir = (s.Type == "DIRECTORY")
+			}
+			return ss, nil
+		}
+		return nil, nil
+	case strings.HasPrefix(name, inmemPrefix):
+		return nil, errors.New("in-memory filesystem does not yet support List")
 	}
 	return nil, UnknownFilesystemType
 }

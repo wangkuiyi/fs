@@ -87,3 +87,29 @@ func TestOpenInMem(t *testing.T) {
 	ExampleCreate("inmem://tmp/b", t)
 	ExampleOpen("inmem://tmp/b", t)
 }
+
+func ExampleList(name, expected string, t *testing.T) {
+	is, e := List(name)
+	if e != nil {
+		t.Errorf("Failed List(%s): %v", name, e)
+	}
+	foundExpected := false
+	for _, s := range is {
+		if s.Name == expected {
+			foundExpected = true
+		}
+	}
+	if !foundExpected {
+		t.Errorf("Didn't found expected file %s", expected)
+	}
+}
+
+func TestListLocal(t *testing.T) {
+	ExampleCreate("file:///tmp/b", t)
+	ExampleList("file:///tmp", "b", t)
+}
+
+func TestListHDFS(t *testing.T) {
+	ExampleCreate("hdfs:///tmpb", t)
+	ExampleList("hdfs:///", "tmpb", t)
+}
