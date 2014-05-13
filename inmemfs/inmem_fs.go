@@ -63,3 +63,7 @@ func List(name string) []*Info {
 	}
 	return r
 }
+
+func Format() {
+	inMem = make(InMemoryFilesystem)
+}
