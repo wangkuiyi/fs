@@ -44,12 +44,10 @@
 	  <property>
 		<name>dfs.datanode.data.dir</name>
 		<value>file:///Users/yiwang/hadoop/hdfs/datanode</value>
-		<description>Comma separated list of paths on the local filesystem of a DataNode where it should store its blocks.</description>
 	  </property>
 	  <property>
 		<name>dfs.namenode.name.dir</name>
 		<value>file:///Users/yiwang/hadoop/hdfs/namenode</value>
-		<description>Path on the local filesystem where the NameNode stores the namespace and transaction logs persistently.</description>
 	  </property>
 	  <property>
 		<name>dfs.webhdfs.enabled</name>
@@ -66,7 +64,7 @@
 	</configuration>
 */
 // In above samples, it is assumed that $HADOOP_HOME is at
-// /Users/yiwang/hadoop. You might want to adapt the path to fit your
+// /Users/yiwang/hadoop. You would want to adapt the path to fit your
 // case.
 package file
 
@@ -258,7 +256,17 @@ func List(name string) ([]Info, error) {
 		}
 		return nil, nil
 	case strings.HasPrefix(name, inmemPrefix):
-		return nil, errors.New("in-memory filesystem does not yet support List")
+		is := inmemfs.List(strings.TrimPrefix(name, inmemPrefix))
+		if len(is) > 0 {
+			ss := make([]Info, len(is))
+			for i, s := range is {
+				ss[i].Name = s.Name
+				ss[i].Size = s.Size
+				ss[i].IsDir = s.IsDir
+			}
+			return ss, nil
+		}
+		return nil, nil
 	}
 	return nil, UnknownFilesystemType
 }
