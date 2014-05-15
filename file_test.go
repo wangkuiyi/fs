@@ -69,6 +69,16 @@ func ExampleList(name, expected string, t *testing.T) {
 	}
 }
 
+func ExampleExists(name string, expected bool, t *testing.T) {
+	b, e := Exists(name)
+	if e != nil {
+		t.Error("Unexptected error: ", e)
+	}
+	if b != expected {
+		t.Errorf("Expecting existence of %s is %v, got %v", name, expected, b)
+	}
+}
+
 func TestCreateLocal(t *testing.T) {
 	ExampleCreate("file:///tmp/b", t)
 }
@@ -110,6 +120,10 @@ func TestListLocal(t *testing.T) {
 }
 
 func TestListHDFS(t *testing.T) {
+	if os.Getenv("DISABLE_HDFS_TEST") != "" {
+		t.SkipNow()
+		return
+	}
 	ExampleCreate("hdfs:///tmpb", t)
 	ExampleList("hdfs:///", "tmpb", t)
 }
@@ -117,4 +131,28 @@ func TestListHDFS(t *testing.T) {
 func TestListInMem(t *testing.T) {
 	ExampleCreate("inmem://tmp/b", t)
 	ExampleList("inmem://tmp/", "b", t)
+}
+
+func TestExistsLocal(t *testing.T) {
+	ExampleCreate("file:///tmp/b", t)
+	ExampleExists("file:///tmp/b", true, t)
+	ExampleExists("file:///tmp", true, t)
+	ExampleExists("file:///something-that-must-not-exist", false, t)
+}
+
+func TestExistsHDFS(t *testing.T) {
+	if os.Getenv("DISABLE_HDFS_TEST") != "" {
+		t.SkipNow()
+		return
+	}
+	ExampleCreate("hdfs:///tmpb", t)
+	ExampleExists("hdfs:///tmpb", true, t)
+	ExampleExists("hdfs:///", true, t)
+	ExampleExists("hdfs:///something-that-must-not-exist", false, t)
+}
+
+func TestExistsInMem(t *testing.T) {
+	ExampleCreate("inmem:///tmp/b", t)
+	ExampleExists("inmem:///tmp/b", true, t)
+	ExampleExists("inmem:///something-that-must-not-exist", false, t)
 }

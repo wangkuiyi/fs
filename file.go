@@ -241,7 +241,8 @@ func List(name string) ([]Info, error) {
 		}
 		return nil, nil
 	case strings.HasPrefix(name, hdfsPrefix):
-		is, e := hdfs.ListStatus(gowfs.Path{Name: strings.TrimPrefix(name, hdfsPrefix)})
+		is, e := hdfs.ListStatus(
+			gowfs.Path{Name: strings.TrimPrefix(name, hdfsPrefix)})
 		if e != nil {
 			return nil, e
 		}
@@ -269,4 +270,25 @@ func List(name string) ([]Info, error) {
 		return nil, nil
 	}
 	return nil, UnknownFilesystemType
+}
+
+func Exists(name string) (bool, error) {
+	switch {
+	case strings.HasPrefix(name, localPrefix):
+		_, e := os.Stat(strings.TrimPrefix(name, localPrefix))
+		if e != nil {
+			if os.IsNotExist(e) {
+				return false, nil
+			} else {
+				return false, e
+			}
+		}
+		return true, nil
+	case strings.HasPrefix(name, hdfsPrefix):
+		fs := gowfs.FsShell{hdfs, "/"}
+		return fs.Exists(strings.TrimPrefix(name, hdfsPrefix))
+	case strings.HasPrefix(name, inmemPrefix):
+		return inmemfs.Exists(strings.TrimPrefix(name, inmemPrefix)), nil
+	}
+	return false, UnknownFilesystemType
 }

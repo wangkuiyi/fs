@@ -67,3 +67,8 @@ func List(name string) []*Info {
 func Format() {
 	inMem = make(InMemoryFilesystem)
 }
+
+func Exists(name string) bool {
+	_, ok := inMem[name]
+	return ok
+}
