@@ -72,3 +72,10 @@ func Exists(name string) bool {
 	_, ok := inMem[name]
 	return ok
 }
+
+func MkDir(name string) {
+	if name[len(name)-1] != '/' {
+		name = name + "/"
+	}
+	inMem[name] = new(bytes.Buffer)
+}

@@ -82,9 +82,9 @@ import (
 )
 
 const (
-	hdfsPrefix  = "hdfs://"
-	localPrefix = "file://"
-	inmemPrefix = "inmem://"
+	HDFSPrefix  = "hdfs:"
+	LocalPrefix = "file:"
+	InMemPrefix = "inmem:"
 )
 
 var (
@@ -124,6 +124,8 @@ func Initialize() error {
 		}
 		hdfs = fs
 		return testConnection()
+	} else {
+		log.Printf("Command line flag namenode not specified, no HDFS access.")
 	}
 	return nil
 }
@@ -145,8 +147,8 @@ func testConnection() error {
 func Create(name string) (io.WriteCloser, error) {
 	r, w := io.Pipe()
 	switch {
-	case strings.HasPrefix(name, localPrefix):
-		f, e := os.Create(strings.TrimPrefix(name, localPrefix))
+	case strings.HasPrefix(name, LocalPrefix):
+		f, e := os.Create(strings.TrimPrefix(name, LocalPrefix))
 		if e != nil {
 			r.Close()
 			w.Close()
@@ -160,10 +162,10 @@ func Create(name string) (io.WriteCloser, error) {
 				log.Fatalf("Failed piping to file %s: %v", name, e)
 			}
 		}()
-	case strings.HasPrefix(name, hdfsPrefix):
+	case strings.HasPrefix(name, HDFSPrefix):
 		go func() {
 			_, e := hdfs.Create(r,
-				gowfs.Path{Name: strings.TrimPrefix(name, hdfsPrefix)},
+				gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)},
 				true, // overwrite
 				0, 0, // default blocksize and replica
 				0700, // only the owner can access
@@ -174,8 +176,8 @@ func Create(name string) (io.WriteCloser, error) {
 				log.Fatalf("Failed piping to file %s: %v", name, e)
 			}
 		}()
-	case strings.HasPrefix(name, inmemPrefix):
-		f := inmemfs.Create(strings.TrimPrefix(name, inmemPrefix))
+	case strings.HasPrefix(name, InMemPrefix):
+		f := inmemfs.Create(strings.TrimPrefix(name, InMemPrefix))
 		go func() {
 			defer r.Close()
 			_, e := io.Copy(f, r)
@@ -193,22 +195,22 @@ func Create(name string) (io.WriteCloser, error) {
 
 func Open(name string) (io.ReadCloser, error) {
 	switch {
-	case strings.HasPrefix(name, localPrefix):
-		f, e := os.Open(strings.TrimPrefix(name, localPrefix))
+	case strings.HasPrefix(name, LocalPrefix):
+		f, e := os.Open(strings.TrimPrefix(name, LocalPrefix))
 		if e != nil {
 			return nil, CannotOpenFile
 		}
 		return f, nil
-	case strings.HasPrefix(name, hdfsPrefix):
+	case strings.HasPrefix(name, HDFSPrefix):
 		r, e := hdfs.Open(
-			gowfs.Path{Name: strings.TrimPrefix(name, hdfsPrefix)},
+			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)},
 			0, 0, 0) // default offset, lenght and buffersize
 		if e != nil {
 			return nil, CannotOpenFile
 		}
 		return r, nil
-	case strings.HasPrefix(name, inmemPrefix):
-		r, e := inmemfs.Open(strings.TrimPrefix(name, inmemPrefix))
+	case strings.HasPrefix(name, InMemPrefix):
+		r, e := inmemfs.Open(strings.TrimPrefix(name, InMemPrefix))
 		if e != nil {
 			return nil, CannotOpenFile
 		}
@@ -225,8 +227,8 @@ type Info struct {
 
 func List(name string) ([]Info, error) {
 	switch {
-	case strings.HasPrefix(name, localPrefix):
-		is, e := ioutil.ReadDir(strings.TrimPrefix(name, localPrefix))
+	case strings.HasPrefix(name, LocalPrefix):
+		is, e := ioutil.ReadDir(strings.TrimPrefix(name, LocalPrefix))
 		if e != nil {
 			return nil, e
 		}
@@ -240,9 +242,9 @@ func List(name string) ([]Info, error) {
 			return ss, nil
 		}
 		return nil, nil
-	case strings.HasPrefix(name, hdfsPrefix):
+	case strings.HasPrefix(name, HDFSPrefix):
 		is, e := hdfs.ListStatus(
-			gowfs.Path{Name: strings.TrimPrefix(name, hdfsPrefix)})
+			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)})
 		if e != nil {
 			return nil, e
 		}
@@ -256,8 +258,8 @@ func List(name string) ([]Info, error) {
 			return ss, nil
 		}
 		return nil, nil
-	case strings.HasPrefix(name, inmemPrefix):
-		is := inmemfs.List(strings.TrimPrefix(name, inmemPrefix))
+	case strings.HasPrefix(name, InMemPrefix):
+		is := inmemfs.List(strings.TrimPrefix(name, InMemPrefix))
 		if len(is) > 0 {
 			ss := make([]Info, len(is))
 			for i, s := range is {
@@ -272,23 +274,66 @@ func List(name string) ([]Info, error) {
 	return nil, UnknownFilesystemType
 }
 
+// Exists returns false, if there is any error.
 func Exists(name string) (bool, error) {
 	switch {
-	case strings.HasPrefix(name, localPrefix):
-		_, e := os.Stat(strings.TrimPrefix(name, localPrefix))
+	case strings.HasPrefix(name, LocalPrefix):
+		_, e := os.Stat(strings.TrimPrefix(name, LocalPrefix))
 		if e != nil {
 			if os.IsNotExist(e) {
 				return false, nil
 			} else {
-				return false, e
+				return false, fmt.Errorf("Exists(%s): %v", name, e)
 			}
 		}
 		return true, nil
-	case strings.HasPrefix(name, hdfsPrefix):
+	case strings.HasPrefix(name, HDFSPrefix):
 		fs := gowfs.FsShell{hdfs, "/"}
-		return fs.Exists(strings.TrimPrefix(name, hdfsPrefix))
-	case strings.HasPrefix(name, inmemPrefix):
-		return inmemfs.Exists(strings.TrimPrefix(name, inmemPrefix)), nil
+		// TODO(wyi): confirm that fs.Exists returns false when error.
+		return fs.Exists(strings.TrimPrefix(name, HDFSPrefix))
+	case strings.HasPrefix(name, InMemPrefix):
+		return inmemfs.Exists(strings.TrimPrefix(name, InMemPrefix)),
+			nil
 	}
 	return false, UnknownFilesystemType
+}
+
+// Create a directory, along with any necessary parents.  If the
+// directory is already there, it returns nil.
+//
+// TODO(wyi): Add unit test for this function.
+func MkDir(name string) error {
+	switch {
+	case strings.HasPrefix(name, LocalPrefix):
+		return os.MkdirAll(strings.TrimPrefix(name, LocalPrefix), 0777)
+	case strings.HasPrefix(name, HDFSPrefix):
+		_, e := hdfs.MkDirs(
+			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)}, 0777)
+		return e
+	case strings.HasPrefix(name, InMemPrefix):
+		inmemfs.MkDir(strings.TrimPrefix(name, InMemPrefix))
+		return nil
+	}
+	return UnknownFilesystemType
+}
+
+// Put copy a local file to HDFS.  It overwrites if the destination
+// already exists.
+//
+// BUG(wyi): hdfsPath must name a directory.  And due to a bug in
+// "github.com/vladimirvivien/gowfs", this directory must not be the
+// root directory "hdfs:/".
+func Put(localFile, hdfsPath string) (bool, error) {
+	if !strings.HasPrefix(localFile, LocalPrefix) {
+		return false, fmt.Errorf("localFile %s has no LocalPrefix", localFile)
+	}
+	localFile = strings.TrimPrefix(localFile, LocalPrefix)
+
+	if !strings.HasPrefix(hdfsPath, HDFSPrefix) {
+		return false, fmt.Errorf("hdfsPath %s has no HDFSPrefix", hdfsPath)
+	}
+	hdfsPath = strings.TrimPrefix(hdfsPath, HDFSPrefix)
+
+	fs := &gowfs.FsShell{hdfs, "/"}
+	return fs.Put(localFile, hdfsPath, true)
 }

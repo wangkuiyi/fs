@@ -79,8 +79,15 @@ func ExampleExists(name string, expected bool, t *testing.T) {
 	}
 }
 
+func ExampleMkDir(name string, t *testing.T) {
+	e := MkDir(name)
+	if e != nil {
+		t.Errorf("Unexpected failure Mkdir(%s): %v", name, e)
+	}
+}
+
 func TestCreateLocal(t *testing.T) {
-	ExampleCreate("file:///tmp/b", t)
+	ExampleCreate("file:/tmp/b", t)
 }
 
 func TestCreateHDFS(t *testing.T) {
@@ -88,16 +95,16 @@ func TestCreateHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("hdfs:///tmpb", t)
+	ExampleCreate("hdfs:/tmpb", t)
 }
 
 func TestCreateInMem(t *testing.T) {
-	ExampleCreate("inmem://tmp/b", t)
+	ExampleCreate("inmem:tmp/b", t)
 }
 
 func TestOpenLocal(t *testing.T) {
-	ExampleCreate("file:///tmp/b", t)
-	ExampleOpen("file:///tmp/b", t)
+	ExampleCreate("file:/tmp/b", t)
+	ExampleOpen("file:/tmp/b", t)
 }
 
 func TestOpenHDFS(t *testing.T) {
@@ -105,18 +112,18 @@ func TestOpenHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("hdfs:///tmpb", t)
-	ExampleOpen("inmem://tmp/b", t)
+	ExampleCreate("hdfs:/tmpb", t)
+	ExampleOpen("inmem:tmp/b", t)
 }
 
 func TestOpenInMem(t *testing.T) {
-	ExampleCreate("inmem://tmp/b", t)
-	ExampleOpen("inmem://tmp/b", t)
+	ExampleCreate("inmem:tmp/b", t)
+	ExampleOpen("inmem:tmp/b", t)
 }
 
 func TestListLocal(t *testing.T) {
-	ExampleCreate("file:///tmp/b", t)
-	ExampleList("file:///tmp", "b", t)
+	ExampleCreate("file:/tmp/b", t)
+	ExampleList("file:/tmp", "b", t)
 }
 
 func TestListHDFS(t *testing.T) {
@@ -124,20 +131,20 @@ func TestListHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("hdfs:///tmpb", t)
-	ExampleList("hdfs:///", "tmpb", t)
+	ExampleCreate("hdfs:/tmpb", t)
+	ExampleList("hdfs:/", "tmpb", t)
 }
 
 func TestListInMem(t *testing.T) {
-	ExampleCreate("inmem://tmp/b", t)
-	ExampleList("inmem://tmp/", "b", t)
+	ExampleCreate("inmem:tmp/b", t)
+	ExampleList("inmem:tmp/", "b", t)
 }
 
 func TestExistsLocal(t *testing.T) {
-	ExampleCreate("file:///tmp/b", t)
-	ExampleExists("file:///tmp/b", true, t)
-	ExampleExists("file:///tmp", true, t)
-	ExampleExists("file:///something-that-must-not-exist", false, t)
+	ExampleCreate("file:/tmp/b", t)
+	ExampleExists("file:/tmp/b", true, t)
+	ExampleExists("file:/tmp", true, t)
+	ExampleExists("file:/something-that-must-not-exist", false, t)
 }
 
 func TestExistsHDFS(t *testing.T) {
@@ -145,14 +152,18 @@ func TestExistsHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("hdfs:///tmpb", t)
-	ExampleExists("hdfs:///tmpb", true, t)
-	ExampleExists("hdfs:///", true, t)
-	ExampleExists("hdfs:///something-that-must-not-exist", false, t)
+	ExampleCreate("hdfs:/tmpb", t)
+	ExampleExists("hdfs:/tmpb", true, t)
+	ExampleExists("hdfs:/", true, t)
+	ExampleExists("hdfs:/something-that-must-not-exist", false, t)
 }
 
 func TestExistsInMem(t *testing.T) {
-	ExampleCreate("inmem:///tmp/b", t)
-	ExampleExists("inmem:///tmp/b", true, t)
-	ExampleExists("inmem:///something-that-must-not-exist", false, t)
+	ExampleCreate("inmem:/tmp/b", t)
+	ExampleExists("inmem:/tmp/b", true, t)
+	ExampleExists("inmem:/something-that-must-not-exist", false, t)
+}
+
+func TestMkDirInMem(t *testing.T) {
+	ExampleMkDir("inmem:/tmp/dir", t)
 }
