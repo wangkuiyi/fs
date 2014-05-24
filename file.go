@@ -130,6 +130,11 @@ func Initialize() error {
 	return nil
 }
 
+// IsConnectedToHDFS returns if file has connected to HDFS namenode.
+func IsConnectedToHDFS() bool {
+	return hdfs != nil
+}
+
 func testConnection() error {
 	_, e := hdfs.ListStatus(gowfs.Path{Name: "/"})
 	if e != nil {
