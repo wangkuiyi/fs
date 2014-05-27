@@ -78,6 +78,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"strings"
 )
 
@@ -308,6 +309,11 @@ func Exists(name string) (bool, error) {
 //
 // TODO(wyi): Add unit test for this function.
 func MkDir(name string) error {
+	if len(strings.Join(strings.Split(name, ":")[1:], "")) == 0 {
+		// As path.Dir("file:/a") returns "file:" instead of "file:/".
+		return nil
+	}
+
 	switch {
 	case strings.HasPrefix(name, LocalPrefix):
 		return os.MkdirAll(strings.TrimPrefix(name, LocalPrefix), 0777)
@@ -341,4 +347,32 @@ func Put(localFile, hdfsPath string) (bool, error) {
 
 	fs := &gowfs.FsShell{hdfs, "/"}
 	return fs.Put(localFile, hdfsPath, true)
+}
+
+// TODO(wyi): Add unit test for Stat.
+func Stat(name string) (Info, error) {
+	switch {
+	case strings.HasPrefix(name, LocalPrefix):
+		if fi, e := os.Stat(strings.TrimPrefix(name, LocalPrefix)); e != nil {
+			return Info{}, fmt.Errorf("os.Stat(%s): %v", name, e)
+		} else {
+			return Info{path.Base(name), fi.Size(), fi.IsDir()}, nil
+		}
+	case strings.HasPrefix(name, HDFSPrefix):
+		fs, e := hdfs.GetFileStatus(
+			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)})
+		if e != nil {
+			return Info{}, fmt.Errorf("hdfs.GetFileStatus(%s): %v", name, e)
+		} else {
+			return Info{path.Base(name), fs.Length, fs.Type == "DIRECTORY"}, nil
+		}
+	case strings.HasPrefix(name, InMemPrefix):
+		fi := inmemfs.Stat(strings.TrimPrefix(name, InMemPrefix))
+		if len(fi.Name) > 0 {
+			return Info{fi.Name, fi.Size, fi.IsDir}, nil
+		} else {
+			return Info{}, fmt.Errorf("inmemfs.Info(%s): File not exist", name)
+		}
+	}
+	return Info{}, UnknownFilesystemType
 }

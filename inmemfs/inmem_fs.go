@@ -79,3 +79,13 @@ func MkDir(name string) {
 	}
 	inMem[name] = new(bytes.Buffer)
 }
+
+func Stat(name string) Info {
+	if _, ok := inMem[name]; ok {
+		return Info{
+			Name:  path.Base(name),
+			Size:  int64(inMem[name].Len()),
+			IsDir: name[len(name)-1] == '/'}
+	}
+	return Info{}
+}
