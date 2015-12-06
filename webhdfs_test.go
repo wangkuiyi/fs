@@ -1,3 +1,5 @@
+// TODO(y): Not yet running unit tests since wrapping WebHDFS based operations in Go build tag webhdfs.
+
 // +build webhdfs
 
 package fs
