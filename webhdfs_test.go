@@ -1,5 +1,3 @@
-// TODO(y): Not yet running unit tests since wrapping WebHDFS based operations in Go build tag webhdfs.
-
 // +build webhdfs
 
 package fs
@@ -19,8 +17,7 @@ func TestInitialize(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	namenode = "localhost:50070"
-	if e := Initialize(); e != nil {
+	if e := HookupHDFS("localhost:50070", ""); e != nil {
 		t.Errorf("Failed connect to HDFS: %v", e)
 	}
 }
@@ -28,7 +25,7 @@ func TestInitialize(t *testing.T) {
 func ExampleCreate(name string, t *testing.T) {
 	w, e := Create(name)
 	if e != nil {
-		t.Fatalf("Create failed: %v", e)
+		t.Errorf("Create failed: %v", e)
 	}
 	defer w.Close()
 
@@ -42,7 +39,7 @@ func ExampleCreate(name string, t *testing.T) {
 func ExampleOpen(name string, t *testing.T) {
 	r, e := Open(name)
 	if e != nil {
-		t.Fatalf("Open failed: %v", e)
+		t.Errorf("Open failed: %v", e)
 	}
 	defer r.Close()
 
@@ -91,7 +88,7 @@ func ExampleMkDir(name string, t *testing.T) {
 }
 
 func TestCreateLocal(t *testing.T) {
-	ExampleCreate("file:/tmp/b", t)
+	ExampleCreate("/tmp/b", t)
 }
 
 func TestCreateHDFS(t *testing.T) {
@@ -99,16 +96,16 @@ func TestCreateHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("hdfs:/tmpb", t)
+	ExampleCreate("/hdfs/tmpb", t)
 }
 
 func TestCreateInMem(t *testing.T) {
-	ExampleCreate("inmem:tmp/b", t)
+	ExampleCreate("/inmem/tmp/b", t)
 }
 
 func TestOpenLocal(t *testing.T) {
-	ExampleCreate("file:/tmp/b", t)
-	ExampleOpen("file:/tmp/b", t)
+	ExampleCreate("/tmp/b", t)
+	ExampleOpen("/tmp/b", t)
 }
 
 func TestOpenHDFS(t *testing.T) {
@@ -116,18 +113,18 @@ func TestOpenHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("hdfs:/tmpb", t)
-	ExampleOpen("inmem:tmp/b", t)
+	ExampleCreate("/hdfs/tmpb", t)
+	ExampleOpen("/inmem/tmp/b", t)
 }
 
 func TestOpenInMem(t *testing.T) {
-	ExampleCreate("inmem:tmp/b", t)
-	ExampleOpen("inmem:tmp/b", t)
+	ExampleCreate("/inmem/tmp/b", t)
+	ExampleOpen("/inmem/tmp/b", t)
 }
 
 func TestListLocal(t *testing.T) {
-	ExampleCreate("file:/tmp/b", t)
-	ExampleList("file:/tmp", "b", t)
+	ExampleCreate("/tmp/b", t)
+	ExampleList("/tmp", "b", t)
 }
 
 func TestListHDFS(t *testing.T) {
@@ -135,20 +132,20 @@ func TestListHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("hdfs:/tmpb", t)
-	ExampleList("hdfs:/", "tmpb", t)
+	ExampleCreate("/hdfs/tmpb", t)
+	ExampleList("/hdfs/", "tmpb", t)
 }
 
 func TestListInMem(t *testing.T) {
-	ExampleCreate("inmem:tmp/b", t)
-	ExampleList("inmem:tmp/", "b", t)
+	ExampleCreate("/inmem/tmp/b", t)
+	ExampleList("/inmem/tmp/", "b", t)
 }
 
 func TestExistsLocal(t *testing.T) {
-	ExampleCreate("file:/tmp/b", t)
-	ExampleExists("file:/tmp/b", true, t)
-	ExampleExists("file:/tmp", true, t)
-	ExampleExists("file:/something-that-must-not-exist", false, t)
+	ExampleCreate("/tmp/b", t)
+	ExampleExists("/tmp/b", true, t)
+	ExampleExists("/tmp", true, t)
+	ExampleExists("/something-that-must-not-exist", false, t)
 }
 
 func TestExistsHDFS(t *testing.T) {
@@ -156,18 +153,18 @@ func TestExistsHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("hdfs:/tmpb", t)
-	ExampleExists("hdfs:/tmpb", true, t)
-	ExampleExists("hdfs:/", true, t)
-	ExampleExists("hdfs:/something-that-must-not-exist", false, t)
+	ExampleCreate("/hdfs/tmpb", t)
+	ExampleExists("/hdfs/tmpb", true, t)
+	ExampleExists("/hdfs/", true, t)
+	ExampleExists("/hdfs/something-that-must-not-exist", false, t)
 }
 
 func TestExistsInMem(t *testing.T) {
-	ExampleCreate("inmem:/tmp/b", t)
-	ExampleExists("inmem:/tmp/b", true, t)
-	ExampleExists("inmem:/something-that-must-not-exist", false, t)
+	ExampleCreate("/inmem/tmp/b", t)
+	ExampleExists("/inmem/tmp/b", true, t)
+	ExampleExists("/inmem/something-that-must-not-exist", false, t)
 }
 
 func TestMkDirInMem(t *testing.T) {
-	ExampleMkDir("inmem:/tmp/dir", t)
+	ExampleMkDir("/inmem/tmp/dir", t)
 }

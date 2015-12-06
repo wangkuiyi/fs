@@ -75,7 +75,23 @@
 // case.
 package fs
 
+import "strings"
+
+type Type int
+
 const (
-	HDFSPrefix  = "/hdfs/"
-	InMemPrefix = "/inmem/"
+	Local Type = iota
+	HDFS  Type = iota
+	InMem Type = iota
 )
+
+func FsPath(path string) (Type, string) {
+	switch {
+	case strings.HasPrefix(path, "/hdfs/"):
+		return HDFS, "/" + strings.TrimPrefix(path, "/hdfs/")
+	case strings.HasPrefix(path, "/inmem/"):
+		return InMem, "/" + strings.TrimPrefix(path, "/inmem/")
+	default:
+		return Local, path
+	}
+}
