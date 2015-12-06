@@ -36,8 +36,7 @@ func HookupHDFS(addr, user string) error {
 	return testConnection()
 }
 
-// IsConnectedToHDFS returns if file has connected to HDFS namenode.
-func IsConnectedToHDFS() bool {
+func hookedUp() bool {
 	return hdfs != nil
 }
 
@@ -59,6 +58,9 @@ func Create(name string) (io.WriteCloser, error) {
 	r, w := io.Pipe()
 	switch {
 	case strings.HasPrefix(name, HDFSPrefix):
+		if !hookedUp() {
+			return nil, fmt.Errorf("Not yet hooked up with HDFS before creating %v", name)
+		}
 		go func() {
 			_, e := hdfs.Create(r,
 				gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)},
@@ -69,7 +71,7 @@ func Create(name string) (io.WriteCloser, error) {
 			if e != nil {
 				r.Close()
 				w.Close()
-				log.Fatalf("Failed piping to file %s: %v", name, e)
+				log.Panicf("Failed piping to file %s: %v", name, e)
 			}
 		}()
 	case strings.HasPrefix(name, InMemPrefix):
@@ -78,7 +80,7 @@ func Create(name string) (io.WriteCloser, error) {
 			defer r.Close()
 			_, e := io.Copy(f, r)
 			if e != nil {
-				log.Fatalf("Failed piping to file %s: %v", name, e)
+				log.Panicf("Failed piping to file %s: %v", name, e)
 			}
 		}()
 	default:
@@ -93,7 +95,7 @@ func Create(name string) (io.WriteCloser, error) {
 			defer r.Close()
 			_, e := io.Copy(f, r)
 			if e != nil {
-				log.Fatalf("Failed piping to file %s: %v", name, e)
+				log.Panicf("Failed piping to file %s: %v", name, e)
 			}
 		}()
 	}
@@ -103,9 +105,10 @@ func Create(name string) (io.WriteCloser, error) {
 func Open(name string) (io.ReadCloser, error) {
 	switch {
 	case strings.HasPrefix(name, HDFSPrefix):
-		r, e := hdfs.Open(
-			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)},
-			0, 0, 0) // default offset, lenght and buffersize
+		if !hookedUp() {
+			return nil, fmt.Errorf("Not yet hooked up with HDFS before opening %v", name)
+		}
+		r, e := hdfs.Open(gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)}, 0, 0, 0) // default offset, lenght and buffersize
 		if e != nil {
 			return nil, fmt.Errorf("Cannot open HDFS file %v", name)
 		}
@@ -135,8 +138,10 @@ type Info struct {
 func List(name string) ([]Info, error) {
 	switch {
 	case strings.HasPrefix(name, HDFSPrefix):
-		is, e := hdfs.ListStatus(
-			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)})
+		if !hookedUp() {
+			return nil, fmt.Errorf("Not yet hooked up with HDFS before listing %v", name)
+		}
+		is, e := hdfs.ListStatus(gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)})
 		if e != nil {
 			return nil, e
 		}
@@ -184,12 +189,14 @@ func List(name string) ([]Info, error) {
 func Exists(name string) (bool, error) {
 	switch {
 	case strings.HasPrefix(name, HDFSPrefix):
+		if !hookedUp() {
+			return false, fmt.Errorf("Not yet hooked up with HDFS before checking existence of %v", name)
+		}
 		fs := gowfs.FsShell{hdfs, "/"}
 		// TODO(wyi): confirm that fs.Exists returns false when error.
 		return fs.Exists(strings.TrimPrefix(name, HDFSPrefix))
 	case strings.HasPrefix(name, InMemPrefix):
-		return inmemfs.Exists(strings.TrimPrefix(name, InMemPrefix)),
-			nil
+		return inmemfs.Exists(strings.TrimPrefix(name, InMemPrefix)), nil
 	default:
 		_, e := os.Stat(name)
 		if e != nil {
@@ -215,8 +222,10 @@ func MkDir(name string) error {
 
 	switch {
 	case strings.HasPrefix(name, HDFSPrefix):
-		_, e := hdfs.MkDirs(
-			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)}, 0777)
+		if !hookedUp() {
+			return fmt.Errorf("Not yet hooked up with HDFS before mkdir %v", name)
+		}
+		_, e := hdfs.MkDirs(gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)}, 0777)
 		return e
 	case strings.HasPrefix(name, InMemPrefix):
 		inmemfs.MkDir(strings.TrimPrefix(name, InMemPrefix))
@@ -233,6 +242,10 @@ func MkDir(name string) error {
 // "github.com/vladimirvivien/gowfs", this directory must not be the
 // root directory "hdfs:/".
 func Put(localFile, hdfsPath string) (bool, error) {
+	if !hookedUp() {
+		return false, fmt.Errorf("Not yet hooked up with HDFS before put %v to %v", localFile, hdfsPath)
+	}
+
 	if strings.HasPrefix(localFile, HDFSPrefix) || strings.HasPrefix(localFile, InMemPrefix) {
 		return false, fmt.Errorf("localFile %s must be local", localFile)
 	}
@@ -250,8 +263,11 @@ func Put(localFile, hdfsPath string) (bool, error) {
 func Stat(name string) (Info, error) {
 	switch {
 	case strings.HasPrefix(name, HDFSPrefix):
-		fs, e := hdfs.GetFileStatus(
-			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)})
+		if !hookedUp() {
+			return Info{}, fmt.Errorf("Not yet hooked up with HDFS before stat %v", name)
+		}
+
+		fs, e := hdfs.GetFileStatus(gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)})
 		if e != nil {
 			return Info{}, fmt.Errorf("hdfs.GetFileStatus(%s): %v", name, e)
 		} else {
