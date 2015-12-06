@@ -1,4 +1,6 @@
-package file
+// +build webhdfs
+
+package fs
 
 import (
 	"encoding/json"
