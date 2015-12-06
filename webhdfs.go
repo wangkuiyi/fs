@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/user"
 	"path"
 	"strings"
 
@@ -20,15 +21,17 @@ var (
 	hdfs *gowfs.FileSystem
 )
 
-func HookupHDFS(addr, user string) error {
-	if len(user) <= 0 {
-		user = os.Getenv("USER")
-		if len(user) <= 0 {
-			return errors.New("Specify HDFS user specificially or via $USER")
+func HookupHDFS(addr, role string) error {
+	if len(role) <= 0 {
+		if u, e := user.Current(); e != nil {
+			return fmt.Errorf("Unknown current user: %v", e)
+		} else {
+			role = u.Username
 		}
 	}
-	log.Printf("Connecting to HDFS %s@%s", user, addr)
-	fs, e := gowfs.NewFileSystem(gowfs.Configuration{Addr: addr, User: user})
+
+	log.Printf("Connecting to HDFS %s@%s", role, addr)
+	fs, e := gowfs.NewFileSystem(gowfs.Configuration{Addr: addr, User: role})
 	if e != nil {
 		return e
 	}
