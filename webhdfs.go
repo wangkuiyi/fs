@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	hdfs *gowfs.FileSystem
+	webfs *gowfs.FileSystem
 )
 
 func HookupHDFS(addr, role string) error {
@@ -32,21 +32,21 @@ func HookupHDFS(addr, role string) error {
 	if fs, e := gowfs.NewFileSystem(gowfs.Configuration{Addr: addr, User: role}); e != nil {
 		return e
 	} else {
-		hdfs = fs
+		webfs = fs
 		return testConnection()
 	}
 }
 
 func hookedUp() bool {
-	return hdfs != nil
+	return webfs != nil
 }
 
 func testConnection() error {
-	_, e := hdfs.ListStatus(gowfs.Path{Name: "/"})
+	_, e := webfs.ListStatus(gowfs.Path{Name: "/"})
 	if e != nil {
 		return fmt.Errorf("Unable to connect to server: %v", e)
 	}
-	log.Printf("Connected to %s. OK.\n", hdfs.Config.Addr)
+	log.Printf("Connected to %s. OK.\n", webfs.Config.Addr)
 	return nil
 }
 
@@ -63,7 +63,7 @@ func Create(name string) (io.WriteCloser, error) {
 			return nil, fmt.Errorf("Not yet hooked up with HDFS before creating %v", name)
 		}
 		go func() {
-			_, e := hdfs.Create(r,
+			_, e := webfs.Create(r,
 				gowfs.Path{Name: path},
 				true, // overwrite
 				0, 0, // default blocksize and replica
@@ -109,7 +109,7 @@ func Open(name string) (io.ReadCloser, error) {
 		if !hookedUp() {
 			return nil, fmt.Errorf("Not yet hooked up with HDFS before opening %v", name)
 		}
-		r, e := hdfs.Open(gowfs.Path{Name: path}, 0, 0, 0) // default offset, lenght and buffersize
+		r, e := webfs.Open(gowfs.Path{Name: path}, 0, 0, 0) // default offset, lenght and buffersize
 		if e != nil {
 			return nil, fmt.Errorf("Cannot open HDFS file %v", name)
 		}
@@ -135,7 +135,7 @@ func List(name string) ([]Info, error) {
 		if !hookedUp() {
 			return nil, fmt.Errorf("Not yet hooked up with HDFS before listing %v", name)
 		}
-		is, e := hdfs.ListStatus(gowfs.Path{Name: path})
+		is, e := webfs.ListStatus(gowfs.Path{Name: path})
 		if e != nil {
 			return nil, e
 		}
@@ -176,7 +176,7 @@ func Exists(name string) (bool, error) {
 		if !hookedUp() {
 			return false, fmt.Errorf("Not yet hooked up with HDFS before checking existence of %v", name)
 		}
-		fs := gowfs.FsShell{FileSystem: hdfs, WorkingPath: "/"}
+		fs := gowfs.FsShell{FileSystem: webfs, WorkingPath: "/"}
 		// TODO(wyi): confirm that fs.Exists returns false when error.
 		return fs.Exists(path)
 	case InMem:
@@ -204,7 +204,7 @@ func MkDir(name string) error {
 		if !hookedUp() {
 			return fmt.Errorf("Not yet hooked up with HDFS before mkdir %v", name)
 		}
-		_, e := hdfs.MkDirs(gowfs.Path{Name: path}, 0777)
+		_, e := webfs.MkDirs(gowfs.Path{Name: path}, 0777)
 		return e
 	case InMem:
 		DefaultInMemFS.MkDir(path)
@@ -230,7 +230,7 @@ func Put(localFile, hdfsPath string) (bool, error) {
 	} else if fs, dest := FsPath(hdfsPath); fs != HDFS {
 		return false, fmt.Errorf("hdfsPath %s has no HDFSPrefix", hdfsPath)
 	} else {
-		fs := &gowfs.FsShell{FileSystem: hdfs, WorkingPath: "/"}
+		fs := &gowfs.FsShell{FileSystem: webfs, WorkingPath: "/"}
 		return fs.Put(src, dest, true)
 	}
 }
@@ -242,7 +242,7 @@ func Stat(name string) (Info, error) {
 		if !hookedUp() {
 			return Info{}, fmt.Errorf("Not yet hooked up with HDFS before stat %v", name)
 		}
-		fs, e := hdfs.GetFileStatus(gowfs.Path{Name: p})
+		fs, e := webfs.GetFileStatus(gowfs.Path{Name: p})
 		if e != nil {
 			return Info{}, fmt.Errorf("hdfs.GetFileStatus(%s): %v", name, e)
 		} else {
