@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/user"
 	"path"
-	"strings"
 
 	"github.com/vladimirvivien/gowfs"
 )
@@ -86,7 +85,7 @@ func Create(name string) (io.WriteCloser, error) {
 			}
 		}()
 	default:
-		f, e := os.Create(name)
+		f, e := os.Create(path)
 		if e != nil {
 			r.Close()
 			w.Close()
@@ -122,7 +121,7 @@ func Open(name string) (io.ReadCloser, error) {
 		}
 		return r, nil
 	default:
-		f, e := os.Open(name)
+		f, e := os.Open(path)
 		if e != nil {
 			return nil, fmt.Errorf("Cannot open local file %v", name)
 		}
@@ -153,7 +152,7 @@ func List(name string) ([]Info, error) {
 	case InMem:
 		return DefaultInMemFS.List(path), nil
 	default:
-		is, e := ioutil.ReadDir(name)
+		is, e := ioutil.ReadDir(path)
 		if e != nil {
 			return nil, e
 		}
@@ -183,7 +182,7 @@ func Exists(name string) (bool, error) {
 	case InMem:
 		return DefaultInMemFS.Exists(path), nil
 	default:
-		_, e := os.Stat(name)
+		_, e := os.Stat(path)
 		if e != nil {
 			if os.IsNotExist(e) {
 				return false, nil
@@ -200,11 +199,6 @@ func Exists(name string) (bool, error) {
 //
 // TODO(wyi): Add unit test for this function.
 func MkDir(name string) error {
-	if len(strings.Join(strings.Split(name, ":")[1:], "")) == 0 {
-		// As path.Dir("file:/a") returns "file:" instead of "file:/".
-		return nil
-	}
-
 	switch fs, path := FsPath(name); fs {
 	case HDFS:
 		if !hookedUp() {
@@ -216,7 +210,7 @@ func MkDir(name string) error {
 		DefaultInMemFS.MkDir(path)
 		return nil
 	default:
-		return os.MkdirAll(name, 0777)
+		return os.MkdirAll(path, 0777)
 	}
 }
 
@@ -252,7 +246,7 @@ func Stat(name string) (Info, error) {
 		if e != nil {
 			return Info{}, fmt.Errorf("hdfs.GetFileStatus(%s): %v", name, e)
 		} else {
-			return Info{path.Base(name), fs.Length, fs.Type == "DIRECTORY"}, nil
+			return Info{path.Base(p), fs.Length, fs.Type == "DIRECTORY"}, nil
 		}
 	case InMem:
 		fi := DefaultInMemFS.Stat(p)
@@ -262,10 +256,10 @@ func Stat(name string) (Info, error) {
 			return Info{}, fmt.Errorf("inmemfs.Info(%s): File not exist", name)
 		}
 	default:
-		if fi, e := os.Stat(name); e != nil {
+		if fi, e := os.Stat(p); e != nil {
 			return Info{}, fmt.Errorf("os.Stat(%s): %v", name, e)
 		} else {
-			return Info{path.Base(name), fi.Size(), fi.IsDir()}, nil
+			return Info{path.Base(p), fi.Size(), fi.IsDir()}, nil
 		}
 	}
 }
