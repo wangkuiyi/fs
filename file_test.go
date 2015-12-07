@@ -2,8 +2,12 @@ package fs
 
 import (
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
 	"testing"
+	"time"
 )
 
 const (
@@ -69,17 +73,13 @@ func ExampleList(name, expected string, t *testing.T) {
 }
 
 func ExampleExists(name string, expected bool, t *testing.T) {
-	b, e := Exists(name)
-	if e != nil {
-		t.Error("Unexptected error: ", e)
-	}
-	if b != expected {
+	if b, e := Stat(name); (!os.IsNotExist(e)) != expected {
 		t.Errorf("Expecting existence of %s is %v, got %v", name, expected, b)
 	}
 }
 
 func ExampleMkDir(name string, t *testing.T) {
-	e := MkDir(name)
+	e := Mkdir(name)
 	if e != nil {
 		t.Errorf("Unexpected failure Mkdir(%s): %v", name, e)
 	}
@@ -165,4 +165,34 @@ func TestExistsInMem(t *testing.T) {
 
 func TestMkDirInMem(t *testing.T) {
 	ExampleMkDir("/inmem/tmp/dir", t)
+}
+
+func TestHDFS(t *testing.T) {
+	dir := fmt.Sprintf("/hdfs/test/github.com/wangkuiyi/file/%v", time.Now().UnixNano())
+	file := path.Join(dir, "hello.txt")
+	content := "Hello World!\n"
+
+	if e := Mkdir(dir); e != nil {
+		t.Skip(e)
+	} else {
+		if w, e := Create(file); e != nil {
+			t.Skip(e)
+		} else {
+			fmt.Fprintf(w, content)
+			w.Close()
+
+			if r, e := Open(file); e != nil {
+				t.Skip(e)
+			} else {
+				if b, e := ioutil.ReadAll(r); e != nil {
+					t.Skip(e)
+				} else {
+					if string(b) != content {
+						t.Skipf("Expecting \"%v\", got %v", content, string(b))
+					}
+				}
+				r.Close()
+			}
+		}
+	}
 }

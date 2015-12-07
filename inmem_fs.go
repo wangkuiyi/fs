@@ -73,14 +73,17 @@ func (im InMemFS) MkDir(name string) {
 	im[name] = new(bytes.Buffer)
 }
 
-func (im InMemFS) Stat(name string) os.FileInfo {
+func (im InMemFS) Stat(name string) (os.FileInfo, error) {
 	if _, ok := im[name]; ok {
 		return &FileInfo{
 			name: path.Base(name),
 			size: int64(im[name].Len()),
 			mode: os.FileMode(0777),
 			time: 0,
-			dir:  name[len(name)-1] == '/'}
+			dir:  name[len(name)-1] == '/'}, nil
 	}
-	return &FileInfo{}
+	return nil, &os.PathError{
+		Op:   "Stat",
+		Path: name,
+		Err:  os.ErrNotExist}
 }

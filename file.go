@@ -283,6 +283,8 @@ func ReadDir(name string) ([]os.FileInfo, error) {
 			return ss, nil
 		}
 		return nil, nil
+	case HDFS:
+		return rpcfs.ReadDir(path)
 	case InMem:
 		return DefaultInMemFS.List(path), nil
 	default:
@@ -290,36 +292,11 @@ func ReadDir(name string) ([]os.FileInfo, error) {
 	}
 }
 
-// Exists returns false, if there is any error.
-func Exists(name string) (bool, error) {
-	switch fs, path := FsPath(name); fs {
-	case WebFS:
-		if webfs == nil {
-			return false, errNoWebFS
-		}
-		fs := gowfs.FsShell{FileSystem: webfs, WorkingPath: "/"}
-		// TODO(wyi): confirm that fs.Exists returns false when error.
-		return fs.Exists(path)
-	case InMem:
-		return DefaultInMemFS.Exists(path), nil
-	default:
-		_, e := os.Stat(path)
-		if e != nil {
-			if os.IsNotExist(e) {
-				return false, nil
-			} else {
-				return false, fmt.Errorf("Exists(%s): %v", name, e)
-			}
-		}
-		return true, nil
-	}
-}
-
 // Create a directory, along with any necessary parents.  If the
 // directory is already there, it returns nil.
 //
 // TODO(wyi): Add unit test for this function.
-func MkDir(name string) error {
+func Mkdir(name string) error {
 	switch fs, path := FsPath(name); fs {
 	case WebFS:
 		if webfs == nil {
@@ -327,6 +304,8 @@ func MkDir(name string) error {
 		}
 		_, e := webfs.MkDirs(gowfs.Path{Name: path}, 0777)
 		return e
+	case HDFS:
+		return rpcfs.MkdirAll(path, 0777)
 	case InMem:
 		DefaultInMemFS.MkDir(path)
 		return nil
@@ -349,7 +328,7 @@ func Put(localFile, hdfsPath string) (bool, error) {
 	if fs, src := FsPath(localFile); fs != Local {
 		return false, fmt.Errorf("localFile %s must be local", localFile)
 	} else if fs, dest := FsPath(hdfsPath); fs != WebFS {
-		return false, fmt.Errorf("hdfsPath %s has no HDFSPrefix", hdfsPath)
+		return false, fmt.Errorf("hdfsPath %s must refer to WebHDFS", hdfsPath)
 	} else {
 		fs := &gowfs.FsShell{FileSystem: webfs, WorkingPath: "/"}
 		return fs.Put(src, dest, true)
@@ -364,7 +343,10 @@ func Stat(name string) (os.FileInfo, error) {
 			return nil, errNoWebFS
 		}
 		if fs, e := webfs.GetFileStatus(gowfs.Path{Name: p}); e != nil {
-			return nil, fmt.Errorf("hdfs.GetFileStatus(%s): %v", name, e)
+			return nil, &os.PathError{
+				Op:   "Stat",
+				Path: p,
+				Err:  os.ErrNotExist} //BUG(y): for whatever error, returns os.PathError.
 		} else {
 			mode, _ := strconv.ParseUint(fs.Permission, 8, 32)
 			return &FileInfo{
@@ -374,8 +356,10 @@ func Stat(name string) (os.FileInfo, error) {
 				time: fs.ModificationTime,
 				dir:  fs.Type == "DIRECTORY"}, nil
 		}
+	case HDFS:
+		return rpcfs.Stat(p)
 	case InMem:
-		return DefaultInMemFS.Stat(p), nil
+		return DefaultInMemFS.Stat(p)
 	default:
 		return os.Stat(p)
 	}
