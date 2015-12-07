@@ -95,3 +95,10 @@ func FsPath(path string) (Type, string) {
 		return Local, path
 	}
 }
+
+// Info is used by List.
+type Info struct {
+	Name  string
+	Size  int64
+	IsDir bool
+}

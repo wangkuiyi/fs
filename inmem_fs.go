@@ -1,4 +1,4 @@
-package inmemfs
+package fs
 
 import (
 	"bytes"
@@ -9,10 +9,10 @@ import (
 	"strings"
 )
 
-type InMemoryFilesystem map[string]*bytes.Buffer
+type InMemFS map[string]*bytes.Buffer
 
 var (
-	inMem InMemoryFilesystem = make(InMemoryFilesystem)
+	DefaultInMemFS InMemFS = make(InMemFS)
 )
 
 type nopCloser struct {
@@ -29,33 +29,27 @@ func NopCloser(w io.Writer) io.WriteCloser {
 
 // Create creates a file with given name.  If that file already
 // exists, it is truncated.
-func Create(name string) io.WriteCloser {
-	if _, ok := inMem[name]; ok {
-		inMem[name] = nil
+func (im InMemFS) Create(name string) io.WriteCloser {
+	if _, ok := im[name]; ok {
+		im[name] = nil
 	}
-	inMem[name] = new(bytes.Buffer)
-	return NopCloser(inMem[name])
+	im[name] = new(bytes.Buffer)
+	return NopCloser(im[name])
 }
 
-func Open(name string) (io.ReadCloser, error) {
-	if r, ok := inMem[name]; ok {
+func (im InMemFS) Open(name string) (io.ReadCloser, error) {
+	if r, ok := im[name]; ok {
 		return ioutil.NopCloser(r), nil
 	}
 	return nil, errors.New("File does not exists")
 }
 
-type Info struct {
-	Name  string
-	Size  int64
-	IsDir bool
-}
-
-func List(name string) []*Info {
-	r := make([]*Info, 0)
-	for k, v := range inMem {
+func (im InMemFS) List(name string) []Info {
+	r := make([]Info, 0)
+	for k, v := range im {
 		if strings.HasPrefix(k, name) {
 			n := path.Base(strings.TrimPrefix(k, name))
-			r = append(r, &Info{
+			r = append(r, Info{
 				Name:  n,
 				Size:  int64(v.Len()),
 				IsDir: n[len(n)-1] == '/'})
@@ -64,27 +58,23 @@ func List(name string) []*Info {
 	return r
 }
 
-func Format() {
-	inMem = make(InMemoryFilesystem)
-}
-
-func Exists(name string) bool {
-	_, ok := inMem[name]
+func (im InMemFS) Exists(name string) bool {
+	_, ok := im[name]
 	return ok
 }
 
-func MkDir(name string) {
+func (im InMemFS) MkDir(name string) {
 	if name[len(name)-1] != '/' {
 		name = name + "/"
 	}
-	inMem[name] = new(bytes.Buffer)
+	im[name] = new(bytes.Buffer)
 }
 
-func Stat(name string) Info {
-	if _, ok := inMem[name]; ok {
+func (im InMemFS) Stat(name string) Info {
+	if _, ok := im[name]; ok {
 		return Info{
 			Name:  path.Base(name),
-			Size:  int64(inMem[name].Len()),
+			Size:  int64(im[name].Len()),
 			IsDir: name[len(name)-1] == '/'}
 	}
 	return Info{}

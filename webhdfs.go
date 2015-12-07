@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/vladimirvivien/gowfs"
-	"github.com/wangkuiyi/file/inmemfs"
 )
 
 var (
@@ -31,12 +30,12 @@ func HookupHDFS(addr, role string) error {
 	}
 
 	log.Printf("Connecting to HDFS %s@%s", role, addr)
-	fs, e := gowfs.NewFileSystem(gowfs.Configuration{Addr: addr, User: role})
-	if e != nil {
+	if fs, e := gowfs.NewFileSystem(gowfs.Configuration{Addr: addr, User: role}); e != nil {
 		return e
+	} else {
+		hdfs = fs
+		return testConnection()
 	}
-	hdfs = fs
-	return testConnection()
 }
 
 func hookedUp() bool {
@@ -78,7 +77,7 @@ func Create(name string) (io.WriteCloser, error) {
 			}
 		}()
 	case InMem:
-		f := inmemfs.Create(path)
+		f := DefaultInMemFS.Create(path)
 		go func() {
 			defer r.Close()
 			_, e := io.Copy(f, r)
@@ -117,7 +116,7 @@ func Open(name string) (io.ReadCloser, error) {
 		}
 		return r, nil
 	case InMem:
-		r, e := inmemfs.Open(path)
+		r, e := DefaultInMemFS.Open(path)
 		if e != nil {
 			return nil, fmt.Errorf("Cannot open in-memory file %v", name)
 		}
@@ -128,14 +127,7 @@ func Open(name string) (io.ReadCloser, error) {
 			return nil, fmt.Errorf("Cannot open local file %v", name)
 		}
 		return f, nil
-
 	}
-}
-
-type Info struct {
-	Name  string
-	Size  int64
-	IsDir bool
 }
 
 func List(name string) ([]Info, error) {
@@ -159,17 +151,7 @@ func List(name string) ([]Info, error) {
 		}
 		return nil, nil
 	case InMem:
-		is := inmemfs.List(path)
-		if len(is) > 0 {
-			ss := make([]Info, len(is))
-			for i, s := range is {
-				ss[i].Name = s.Name
-				ss[i].Size = s.Size
-				ss[i].IsDir = s.IsDir
-			}
-			return ss, nil
-		}
-		return nil, nil
+		return DefaultInMemFS.List(path), nil
 	default:
 		is, e := ioutil.ReadDir(name)
 		if e != nil {
@@ -199,7 +181,7 @@ func Exists(name string) (bool, error) {
 		// TODO(wyi): confirm that fs.Exists returns false when error.
 		return fs.Exists(path)
 	case InMem:
-		return inmemfs.Exists(path), nil
+		return DefaultInMemFS.Exists(path), nil
 	default:
 		_, e := os.Stat(name)
 		if e != nil {
@@ -231,7 +213,7 @@ func MkDir(name string) error {
 		_, e := hdfs.MkDirs(gowfs.Path{Name: path}, 0777)
 		return e
 	case InMem:
-		inmemfs.MkDir(path)
+		DefaultInMemFS.MkDir(path)
 		return nil
 	default:
 		return os.MkdirAll(name, 0777)
@@ -273,7 +255,7 @@ func Stat(name string) (Info, error) {
 			return Info{path.Base(name), fs.Length, fs.Type == "DIRECTORY"}, nil
 		}
 	case InMem:
-		fi := inmemfs.Stat(p)
+		fi := DefaultInMemFS.Stat(p)
 		if len(fi.Name) > 0 {
 			return Info{fi.Name, fi.Size, fi.IsDir}, nil
 		} else {
