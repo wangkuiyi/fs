@@ -4,23 +4,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const (
 	testingContent = "Hello World!"
 )
 
-func TestInitialize(t *testing.T) {
-	if os.Getenv("DISABLE_HDFS_TEST") != "" {
-		t.SkipNow()
-		return
-	}
-	if e := HookupHDFS("localhost:9000", "localhost:50070", ""); e != nil {
-		t.Errorf("Failed connect to HDFS: %v", e)
+func init() {
+	if os.Getenv("DISABLE_HDFS_TEST") == "" {
+		if e := HookupHDFS("localhost:9000", "localhost:50070", ""); e != nil {
+			log.Panicf("Failed connect to HDFS: %v", e)
+		}
 	}
 }
 
@@ -171,26 +172,20 @@ func TestHDFS(t *testing.T) {
 	dir := fmt.Sprintf("/hdfs/test/github.com/wangkuiyi/file/%v", time.Now().UnixNano())
 	file := path.Join(dir, "hello.txt")
 	content := "Hello World!\n"
+	assert := assert.New(t)
 
-	if e := Mkdir(dir); e != nil {
-		t.Skip(e)
-	} else {
-		if w, e := Create(file); e != nil {
-			t.Skip(e)
-		} else {
+	// TODO(y): tests Stat and ReadDir.
+	if assert.Nil(Mkdir(dir)) {
+		w, e := Create(file)
+		if assert.Nil(e) {
 			fmt.Fprintf(w, content)
 			w.Close()
 
-			if r, e := Open(file); e != nil {
-				t.Skip(e)
-			} else {
-				if b, e := ioutil.ReadAll(r); e != nil {
-					t.Skip(e)
-				} else {
-					if string(b) != content {
-						t.Skipf("Expecting \"%v\", got %v", content, string(b))
-					}
-				}
+			r, e := Open(file)
+			if assert.Nil(e) {
+				b, e := ioutil.ReadAll(r)
+				assert.Nil(e)
+				assert.Equal(string(b), content)
 				r.Close()
 			}
 		}
