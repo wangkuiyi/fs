@@ -1,5 +1,3 @@
-// +build webhdfs
-
 package fs
 
 import (
@@ -17,7 +15,7 @@ func TestInitialize(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	if e := HookupHDFS("localhost:50070", ""); e != nil {
+	if e := HookupHDFS("localhost:9000", "localhost:50070", ""); e != nil {
 		t.Errorf("Failed connect to HDFS: %v", e)
 	}
 }
@@ -55,13 +53,13 @@ func ExampleOpen(name string, t *testing.T) {
 }
 
 func ExampleList(name, expected string, t *testing.T) {
-	is, e := List(name)
+	is, e := ReadDir(name)
 	if e != nil {
 		t.Errorf("Failed List(%s): %v", name, e)
 	}
 	foundExpected := false
 	for _, s := range is {
-		if s.Name == expected {
+		if s.Name() == expected {
 			foundExpected = true
 		}
 	}
@@ -96,7 +94,7 @@ func TestCreateHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("/hdfs/tmpb", t)
+	ExampleCreate("/webfs/tmpb", t)
 }
 
 func TestCreateInMem(t *testing.T) {
@@ -113,7 +111,7 @@ func TestOpenHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("/hdfs/tmpb", t)
+	ExampleCreate("/webfs/tmpb", t)
 	ExampleOpen("/inmem/tmp/b", t)
 }
 
@@ -132,8 +130,8 @@ func TestListHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("/hdfs/tmpb", t)
-	ExampleList("/hdfs/", "tmpb", t)
+	ExampleCreate("/webfs/tmpb", t)
+	ExampleList("/webfs/", "tmpb", t)
 }
 
 func TestListInMem(t *testing.T) {
@@ -153,10 +151,10 @@ func TestExistsHDFS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	ExampleCreate("/hdfs/tmpb", t)
-	ExampleExists("/hdfs/tmpb", true, t)
-	ExampleExists("/hdfs/", true, t)
-	ExampleExists("/hdfs/something-that-must-not-exist", false, t)
+	ExampleCreate("/webfs/tmpb", t)
+	ExampleExists("/webfs/tmpb", true, t)
+	ExampleExists("/webfs/", true, t)
+	ExampleExists("/webfs/something-that-must-not-exist", false, t)
 }
 
 func TestExistsInMem(t *testing.T) {

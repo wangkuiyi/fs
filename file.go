@@ -75,18 +75,25 @@
 // case.
 package fs
 
-import "strings"
+import (
+	"os"
+	"strings"
+	"time"
+)
 
 type Type int
 
 const (
 	Local Type = iota
-	HDFS  Type = iota
 	InMem Type = iota
+	WebFS Type = iota
+	HDFS  Type = iota
 )
 
 func FsPath(path string) (Type, string) {
 	switch {
+	case strings.HasPrefix(path, "/webfs/"):
+		return WebFS, "/" + strings.TrimPrefix(path, "/webfs/")
 	case strings.HasPrefix(path, "/hdfs/"):
 		return HDFS, "/" + strings.TrimPrefix(path, "/hdfs/")
 	case strings.HasPrefix(path, "/inmem/"):
@@ -96,9 +103,35 @@ func FsPath(path string) (Type, string) {
 	}
 }
 
-// Info is used by List.
-type Info struct {
-	Name  string
-	Size  int64
-	IsDir bool
+// FileInfo implements os.FileInfo
+type FileInfo struct {
+	name string
+	size int64
+	mode os.FileMode
+	time int64
+	dir  bool
+}
+
+func (i FileInfo) Name() string {
+	return i.name
+}
+
+func (i FileInfo) Size() int64 {
+	return i.size
+}
+
+func (i FileInfo) Mode() os.FileMode {
+	return i.mode
+}
+
+func (i FileInfo) ModTime() time.Time {
+	return time.Unix(i.time, 0)
+}
+
+func (i FileInfo) IsDir() bool {
+	return i.dir
+}
+
+func (i FileInfo) Sys() interface{} {
+	return nil
 }

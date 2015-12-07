@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"os"
 	"path"
 	"strings"
 )
@@ -44,15 +45,17 @@ func (im InMemFS) Open(name string) (io.ReadCloser, error) {
 	return nil, errors.New("File does not exists")
 }
 
-func (im InMemFS) List(name string) []Info {
-	r := make([]Info, 0)
+func (im InMemFS) List(name string) []os.FileInfo {
+	r := make([]os.FileInfo, 0)
 	for k, v := range im {
 		if strings.HasPrefix(k, name) {
 			n := path.Base(strings.TrimPrefix(k, name))
-			r = append(r, Info{
-				Name:  n,
-				Size:  int64(v.Len()),
-				IsDir: n[len(n)-1] == '/'})
+			r = append(r, &FileInfo{
+				name: n,
+				size: int64(v.Len()),
+				mode: os.FileMode(0777),
+				time: 0, // InMemFS has no real timestamp
+				dir:  n[len(n)-1] == '/'})
 		}
 	}
 	return r
@@ -70,12 +73,14 @@ func (im InMemFS) MkDir(name string) {
 	im[name] = new(bytes.Buffer)
 }
 
-func (im InMemFS) Stat(name string) Info {
+func (im InMemFS) Stat(name string) os.FileInfo {
 	if _, ok := im[name]; ok {
-		return Info{
-			Name:  path.Base(name),
-			Size:  int64(im[name].Len()),
-			IsDir: name[len(name)-1] == '/'}
+		return &FileInfo{
+			name: path.Base(name),
+			size: int64(im[name].Len()),
+			mode: os.FileMode(0777),
+			time: 0,
+			dir:  name[len(name)-1] == '/'}
 	}
-	return Info{}
+	return &FileInfo{}
 }
