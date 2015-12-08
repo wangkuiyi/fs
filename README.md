@@ -1,65 +1,142 @@
-# File
+# `fs`
 
-File is a file access package written in Go.  It can access files on
+`fs` is a Go API with the same syntax and semantic as standard package
+`os` for accessing
 
-1. local filesystems,
-2. HDFS, and
-3. an [in-memory filesystem](https://github.com/wangkuiyi/file/tree/master/inmemfs) designed for unit testing.
+1. the local filesystem,
+1. HDFS via Hadoop WebHDFS API,
+1. HDFS via Hadoop native protobuf-based RPC, and
+1. an in-memory filesystem for unit testing
 
-## Simple API
+Documentation is at http://godoc.org/github.com/wangkuiyi/fs.
 
-There are not APIs like Open, Read, Write, Close.  Instead, there are
-basically only two functions in File:
+Run `go get github.com/wangkuiyi/fs` to install.
 
-  1. **Create** opens a new file or truncates an existing for writing.
-  It returns an `io.WriteCloser`.  Close it after writing to identify
-  the EOF.
+The minimally supported Hadoop version is 2.2.0.
 
-  2. **Open** opens an exisiting file for reading.  It returns an
-  `io.ReadCloser`.
 
-## Examples
+## Convention
 
-Please refer to http://godoc.org/github.com/wangkuiyi/file for
-documents and examples.
+1. `/hdfs/home/you` refers to path `/home/you` on HDFS and accessed via Hadoop native RPC.
+1. `/webfs/home/you` refers to the same path on HDFS but accessed via WebHDFS.
+1. `/inmem/home/you` refers to `/home/you` on the in-memory filesystem.
+1. `/home/you` refers to `/home/you` on the local filesystem.
 
-## WebHDFS
 
-I used to use [hdfs.go](https://github.com/zyxar/hdfs.go) in accessing
-HDFS from Go.  [hdfs.go](https://github.com/zyxar/hdfs.go) is a CGO
-binding of `libhdfs.so`, which in turn invokes JNI to access HDFS.
-During the process, it might create one or more Java threads.
-Unfortunately, these Java threads prevent `goprof` from profiling my
-Go programs that use [hdfs.go](https://github.com/zyxar/hdfs.go).
-This is because `goprof` has to know the format of all stacks before
-it can take snapshots of these stacks after every short time period,
-however, `goprof` knows only the format of stacks corresponds to
-goroutines, but not those of Java threads.
+## Usage
 
-Luckily, recently versions of Hadoop provides Web API of HDFS, known
-as
-[WebHDFS](http://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/WebHDFS.html).
-This enables the development of HDFS clients in various programming
-languages, and [gowfs](https://github.com/vladimirvivien/gowfs) is a
-Web HDFS client written in Go.  File uses
-[gowfs](https://github.com/vladimirvivien/gowfs).
+The following example comes from `example/example.go`.  It shows how
+`fs` hooks up with HDFS using `fs.HookupHDFS`.
 
-## Install
+```
+func main() {
+	namenode := flag.String("namenode", "localhost:9000", "HDFS namenode address.")
+	webhdfs := flag.String("webhdfs", "localhost:50070", "WebHDFS address.")
+	user := flag.String("user", "", "HDFS username. Could be empty.")
+	flag.Parse()
+	fs.HookupHDFS(*namenode, *webhdfs, *user)
 
-Installation is very simple.  After setting environment variable
-`GOPATH`, checkout most recent source code using `go get`:
+	dir := path.Join(fmt.Sprintf("/hdfs/tmp/test/github.com/wangkuiyi/file/%v", time.Now().UnixNano()))
+	file := path.Join(dir, "hello.txt")
+	content := "Hello World!\n"
 
-    go get github.com/wangkuiyi/file
+	if e := fs.Mkdir(dir); e == nil {
+		if w, e := fs.Create(file); e == nil {
+			fmt.Fprintf(w, content)
+			w.Close()
 
-You can run unit tests by
+			_, e = Stat(file) // Stat on not existing file
+			assert.NotNil(e)
+			assert.True(os.IsNotExist(e))
 
-    go test
+			if r, e := fs.Open(file); e == nil {
+				b, _ := ioutil.ReadAll(r)
+				fmt.Println(string(b))
+				r.Close()
+			}
+		}
+	}
+}
+```
 
-This tests operations on local filesystems, HDFS and in-memory
-filesystem.  If you have not yet set up an HDFS on localhost, you
-might want to disable operations on HDFS by:
+## Internals
 
-    DISABLE_HDFS_TEST go test
+I used to use [hdfs.go](https://github.com/zyxar/hdfs.go) for access
+HDFS.  [hdfs.go](https://github.com/zyxar/hdfs.go) is a CGO binding of
+`libhdfs.so`, which in turn invokes JNI to access HDFS.  This
+invocation often creates some Java threads as a side-effect.
+Unfortunately, these Java threads prevent `goprof` from profiling the
+Go programs, because `goprof` doesn't understand the format of Java
+threads and thus cannot take stack snapshots.
 
-For how to setup an HDFS for development and test, please refer to
-http://godoc.org/github.com/wangkuiyi/file.
+[WebHDFS](http://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/WebHDFS.html)
+is my second trial.  `fs` uses WebHDFS clients
+[gowfs](https://github.com/vladimirvivien/gowfs).  But WebHDFS has a
+delay problem.  Say, if you list the directory immediately after
+creating a file, it is often that the newly created file is not in the
+list.  Therefore, it is highly recommended to use the native
+protobuf-based RPC system.
+   
+
+## Development
+
+To setup a development environment, we might want to install Hadoop
+locally and configure it to run in pseudo distributed mode.  Hadoop
+2.7.1 requires Java SDK >= 1.7.0.  After untar hadoop, say into
+`/home/hadoop`, we need to configure it by editing two configuration
+files: `/home/hadoop/etc/hadoop/core-site.xml`:
+
+	<configuration>
+	  <property>
+		<name>fs.defaultFS</name>
+		<value>hdfs://localhost:9000</value>
+		<description>NameNode URI</description>
+	  </property>
+	  <property>
+		<name>hadoop.http.staticuser.user</name>
+		<value>true</value>
+	  </property>
+	</configuration>
+
+and `/home/hadoop/etc/hadoop/hdfs-site.xml`:
+
+	<configuration>
+	  <property>
+		<name>dfs.datanode.data.dir</name>
+		<value>file:////home/hadoop/hdfs/datanode</value>
+	  </property>
+	  <property>
+		<name>dfs.namenode.name.dir</name>
+		<value>file:///home/hadoop/hdfs/namenode</value>
+	  </property>
+	  <property>
+		<name>dfs.webhdfs.enabled</name>
+		<value>true</value>
+	  </property>
+	  <property>
+		<name>dfs.replication</name>
+		<value>1</value>
+	  </property>
+	  <property>
+		<name>dfs.client.block.write.replace-datanode-on-failure.enable</name>
+		<value>false</value>
+	  </property>
+	</configuration>
+
+Please be aware that we need to create the local directories mentioned
+in above configuration file:
+
+    mkdir /home/hadoop/hdfs/datanode
+    mkdir /home/hadoop/hdfs/namenode
+
+Then we can create (format) the HDFS filesystem:
+
+    /home/hadoop/bin/hdfs namenode -format
+
+and start HDFS daemons:
+
+    /home/hadoop/sbin/start-dfs.sh
+
+Now we should be able to access HDFS:
+
+    /home/hadoop/bin/hdfs dfs -ls /
