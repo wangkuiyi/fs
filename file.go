@@ -264,25 +264,32 @@ func ReadDir(name string) ([]os.FileInfo, error) {
 		if webfs == nil {
 			return nil, errNoWebFS
 		}
+
+		if ok, e := (&gowfs.FsShell{FileSystem: webfs, WorkingPath: "/"}).Exists(path); !ok {
+			return nil, &os.PathError{
+				Op:   "ReadDir",
+				Path: path,
+				Err:  os.ErrNotExist}
+		} else if e != nil {
+			return nil, e
+		}
+
 		is, e := webfs.ListStatus(gowfs.Path{Name: path})
 		if e != nil {
 			return nil, e
 		}
-		if len(is) > 0 {
-			ss := make([]os.FileInfo, 0, len(is))
-			for _, s := range is {
-				mode, _ := strconv.ParseUint(s.Permission, 8, 32)
-				ss = append(ss, &FileInfo{
-					name: s.PathSuffix,
-					size: s.Length,
-					mode: os.FileMode(mode),
-					time: s.ModificationTime,
-					dir:  (s.Type == "DIRECTORY"),
-				})
-			}
-			return ss, nil
+		ss := make([]os.FileInfo, 0, len(is))
+		for _, s := range is {
+			mode, _ := strconv.ParseUint(s.Permission, 8, 32)
+			ss = append(ss, &FileInfo{
+				name: s.PathSuffix,
+				size: s.Length,
+				mode: os.FileMode(mode),
+				time: s.ModificationTime,
+				dir:  (s.Type == "DIRECTORY"),
+			})
 		}
-		return nil, nil
+		return ss, nil
 	case HDFS:
 		return rpcfs.ReadDir(path)
 	case InMem:
@@ -345,8 +352,8 @@ func Stat(name string) (os.FileInfo, error) {
 		if fs, e := webfs.GetFileStatus(gowfs.Path{Name: p}); e != nil {
 			return nil, &os.PathError{
 				Op:   "Stat",
-				Path: p,
-				Err:  os.ErrNotExist} //BUG(y): for whatever error, returns os.PathError.
+				Path: name + e.Error(), // BUG(y): Hacky way to return the real error.
+				Err:  os.ErrNotExist}   //BUG(y): for whatever error, returns os.PathError.
 		} else {
 			mode, _ := strconv.ParseUint(fs.Permission, 8, 32)
 			return &FileInfo{
