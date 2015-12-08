@@ -286,7 +286,7 @@ func ReadDir(name string) ([]os.FileInfo, error) {
 	case HDFS:
 		return rpcfs.ReadDir(path)
 	case InMem:
-		return DefaultInMemFS.List(path), nil
+		return DefaultInMemFS.ReadDir(path)
 	default:
 		return ioutil.ReadDir(path)
 	}

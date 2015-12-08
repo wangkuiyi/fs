@@ -78,12 +78,10 @@ func TestWebFS(t *testing.T) {
 	// testSuite(t, "/webfs")
 }
 */
-// TODO(y): Fix the following failing test.
-/*
+
 func TestInMemFS(t *testing.T) {
 	testSuite(t, "/inmem")
 }
-*/
 
 func TestLocalFS(t *testing.T) {
 	testSuite(t, "/")

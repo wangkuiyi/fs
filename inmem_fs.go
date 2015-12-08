@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+// If the key (string) has suffix '/', it denotes a directory;
+// otherwise it is a file.
 type InMemFS map[string]*bytes.Buffer
 
 var (
@@ -45,10 +47,21 @@ func (im InMemFS) Open(name string) (io.ReadCloser, error) {
 	return nil, errors.New("File does not exists")
 }
 
-func (im InMemFS) List(name string) []os.FileInfo {
+func (im InMemFS) ReadDir(name string) ([]os.FileInfo, error) {
+	if name[len(name)-1] != '/' {
+		name += "/" // Make sure name is a directory.
+	}
+
+	if _, ok := im[name]; !ok {
+		return nil, &os.PathError{
+			Op:   "ReadDir",
+			Path: name,
+			Err:  os.ErrNotExist}
+	}
+
 	r := make([]os.FileInfo, 0)
 	for k, v := range im {
-		if strings.HasPrefix(k, name) {
+		if strings.HasPrefix(k, name) && k != name { // Don't count the directory itself.
 			n := path.Base(strings.TrimPrefix(k, name))
 			r = append(r, &FileInfo{
 				name: n,
@@ -58,7 +71,7 @@ func (im InMemFS) List(name string) []os.FileInfo {
 				dir:  n[len(n)-1] == '/'})
 		}
 	}
-	return r
+	return r, nil
 }
 
 func (im InMemFS) Exists(name string) bool {
