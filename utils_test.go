@@ -22,6 +22,7 @@ func TestSaveAndLoad(t *testing.T) {
 
 	assert.Nil(Save(filename, save))
 
-	load := &T{Name: "", Age: 0}
-	assert.Nil(Load(filename, &load))
+	load, e := Load(filename, &T{})
+	assert.Equal(load, &T{Name: "Yi", Age: 36})
+	assert.Nil(e)
 }

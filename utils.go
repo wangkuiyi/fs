@@ -11,11 +11,11 @@ func Save(filename string, data interface{}) error {
 	return gob.NewEncoder(f).Encode(data)
 }
 
-func Load(filename string, data interface{}) error {
+func Load(filename string, data interface{}) (interface{}, error) {
 	f, e := Open(filename)
 	if e != nil {
-		return e
+		return data, e
 	}
 	defer f.Close()
-	return gob.NewDecoder(f).Decode(data)
+	return data, gob.NewDecoder(f).Decode(data)
 }
