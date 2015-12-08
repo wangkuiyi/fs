@@ -4,11 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/wangkuiyi/fs"
 )
 
@@ -23,20 +23,24 @@ func main() {
 	file := path.Join(dir, "hello.txt")
 	content := "Hello World!\n"
 
-	if e := fs.Mkdir(dir); e == nil {
-		if w, e := fs.Create(file); e == nil {
-			fmt.Fprintf(w, content)
-			w.Close()
+	if e := fs.Mkdir(dir); e != nil {
+		log.Panicf("Mkdir(%v) failed", dir)
+	}
 
-			_, e = Stat(file) // Stat on not existing file
-			assert.NotNil(e)
-			assert.True(os.IsNotExist(e))
+	if w, e := fs.Create(file); e != nil {
+		log.Panicf("Create(%v) failed", file)
+	} else {
+		fmt.Fprintf(w, content)
+		w.Close()
+	}
 
-			if r, e := fs.Open(file); e == nil {
-				b, _ := ioutil.ReadAll(r)
-				fmt.Println(string(b))
-				r.Close()
-			}
-		}
+	if _, e := fs.Stat(file); os.IsNotExist(e) {
+		log.Panicf("Expecting file exists, but not")
+	}
+
+	if r, e := fs.Open(file); e == nil {
+		b, _ := ioutil.ReadAll(r)
+		fmt.Println(string(b))
+		r.Close()
 	}
 }
