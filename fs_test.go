@@ -50,7 +50,7 @@ func testSuite(t *testing.T, protocol string) {
 			w.Close()
 
 			if protocol == "/webfs" {
-				time.Sleep(time.Second / 2) // NOTE: WebHDFS API reacts slowly.
+				time.Sleep(time.Second) // NOTE: WebHDFS API reacts slowly.
 			}
 
 			ls, e = ReadDir(dir) // ReadDir on existing and non-empty dir
@@ -73,7 +73,7 @@ func testSuite(t *testing.T, protocol string) {
 }
 
 func TestWebFS(t *testing.T) {
-	if os.Getenv("DISABLE_HDFS_TEST") == "" {
+	if os.Getenv("ENABLE_WEBFS_TEST") != "" {
 		testSuite(t, "/webfs")
 	}
 }
