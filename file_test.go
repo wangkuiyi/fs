@@ -49,6 +49,10 @@ func testSuite(t *testing.T, protocol string) {
 			fmt.Fprintf(w, content)
 			w.Close()
 
+			if protocol == "/webfs" {
+				time.Sleep(time.Second / 2) // NOTE: WebHDFS API reacts slowly.
+			}
+
 			ls, e = ReadDir(dir) // ReadDir on existing and non-empty dir
 			assert.Nil(e)
 			assert.Equal(1, len(ls))
@@ -69,10 +73,14 @@ func testSuite(t *testing.T, protocol string) {
 }
 
 func TestWebFS(t *testing.T) {
-	testSuite(t, "/webfs")
+	if os.Getenv("DISABLE_HDFS_TEST") == "" {
+		testSuite(t, "/webfs")
+	}
 }
 func TestHDFS(t *testing.T) {
-	testSuite(t, "/hdfs")
+	if os.Getenv("DISABLE_HDFS_TEST") == "" {
+		testSuite(t, "/hdfs")
+	}
 }
 func TestInMemFS(t *testing.T) {
 	testSuite(t, "/inmem")

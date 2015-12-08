@@ -1,12 +1,7 @@
-// Package file provide uniform interface to access local filesystem,
-// Hadoop filesystem (HDFS), and an in-memory filesystem define in
-// https://github.com/wangkuiyi/file/inmemfs.
-//
-// It accesses HDFS either via WebHDFS implemented in
-// github.com/vladimirvivien/gowfs", or the protobuf-based native RPC
-// implemented in write-support branch of github.com/colinmarc/hdfs.
-// The choice between these two options is via Go build tag webhdfs.
-// By default it uses the native RPC.
+// Package fs supports convenient access to the local filesystem,
+// Hadoop filesystem (HDFS) via WebHDFS API
+// (github.com/vladimirvivien/gowfs) and/or native protobuf-based RPC
+// (github.com/colinmarc/hdfs), and an in-memory filesystem.
 //
 // In order to connect to HDFS, you need to manually invoke
 // HookupHDFS(), typically in main():
@@ -278,6 +273,7 @@ func ReadDir(name string) ([]os.FileInfo, error) {
 		if e != nil {
 			return nil, e
 		}
+
 		ss := make([]os.FileInfo, 0, len(is))
 		for _, s := range is {
 			mode, _ := strconv.ParseUint(s.Permission, 8, 32)

@@ -1,65 +1,77 @@
-# File
+# `fs`
 
-File is a file access package written in Go.  It can access files on
+`fs` is a Go API with the same syntax and semantic as standard package
+`os` for accessing
 
-1. local filesystems,
-2. HDFS, and
-3. an [in-memory filesystem](https://github.com/wangkuiyi/file/tree/master/inmemfs) designed for unit testing.
+1. the local filesystem,
+1. HDFS via Hadoop WebHDFS API,
+1. HDFS via Hadoop 2.2.x native protobuf-based RPC, and
+1. an in-memory filesystem for unit testing
 
-## Simple API
+Documentation is at http://godoc.org/github.com/wangkuiyi/fs.
 
-There are not APIs like Open, Read, Write, Close.  Instead, there are
-basically only two functions in File:
+Run `go get github.com/wangkuiyi/fs` to install.
 
-  1. **Create** opens a new file or truncates an existing for writing.
-  It returns an `io.WriteCloser`.  Close it after writing to identify
-  the EOF.
 
-  2. **Open** opens an exisiting file for reading.  It returns an
-  `io.ReadCloser`.
+## Convention
 
-## Examples
+1. `/hdfs/home/you` refers to path `/home/you` on HDFS and accessed via Hadoop native RPC.
+1. `/webfs/home/you` refers to the same path on HDFS but accessed via WebHDFS.
+1. `/inmem/home/you` refers to `/home/you` on the in-memory filesystem.
+1. `/home/you` refers to `/home/you` on the local filesystem.
 
-Please refer to http://godoc.org/github.com/wangkuiyi/file for
-documents and examples.
 
-## WebHDFS
+## Usage
 
-I used to use [hdfs.go](https://github.com/zyxar/hdfs.go) in accessing
-HDFS from Go.  [hdfs.go](https://github.com/zyxar/hdfs.go) is a CGO
-binding of `libhdfs.so`, which in turn invokes JNI to access HDFS.
-During the process, it might create one or more Java threads.
-Unfortunately, these Java threads prevent `goprof` from profiling my
-Go programs that use [hdfs.go](https://github.com/zyxar/hdfs.go).
-This is because `goprof` has to know the format of all stacks before
-it can take snapshots of these stacks after every short time period,
-however, `goprof` knows only the format of stacks corresponds to
-goroutines, but not those of Java threads.
+The following example comes from `example/example.go`.  It shows how
+`fs` hooks up with HDFS using `fs.HookupHDFS`.
 
-Luckily, recently versions of Hadoop provides Web API of HDFS, known
-as
-[WebHDFS](http://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/WebHDFS.html).
-This enables the development of HDFS clients in various programming
-languages, and [gowfs](https://github.com/vladimirvivien/gowfs) is a
-Web HDFS client written in Go.  File uses
-[gowfs](https://github.com/vladimirvivien/gowfs).
+```
+func main() {
+	namenode := flag.String("namenode", "localhost:9000", "HDFS namenode address.")
+	webhdfs := flag.String("webhdfs", "localhost:50070", "WebHDFS address.")
+	user := flag.String("user", "", "HDFS username. Could be empty.")
+	flag.Parse()
+	fs.HookupHDFS(*namenode, *webhdfs, *user)
 
-## Install
+	dir := path.Join(fmt.Sprintf("/hdfs/tmp/test/github.com/wangkuiyi/file/%v", time.Now().UnixNano()))
+	file := path.Join(dir, "hello.txt")
+	content := "Hello World!\n"
 
-Installation is very simple.  After setting environment variable
-`GOPATH`, checkout most recent source code using `go get`:
+	if e := fs.Mkdir(dir); e == nil {
+		if w, e := fs.Create(file); e == nil {
+			fmt.Fprintf(w, content)
+			w.Close()
 
-    go get github.com/wangkuiyi/file
+			_, e = Stat(file) // Stat on not existing file
+			assert.NotNil(e)
+			assert.True(os.IsNotExist(e))
 
-You can run unit tests by
+			if r, e := fs.Open(file); e == nil {
+				b, _ := ioutil.ReadAll(r)
+				fmt.Println(string(b))
+				r.Close()
+			}
+		}
+	}
+}
+```
 
-    go test
+## Internals
 
-This tests operations on local filesystems, HDFS and in-memory
-filesystem.  If you have not yet set up an HDFS on localhost, you
-might want to disable operations on HDFS by:
+I used to use [hdfs.go](https://github.com/zyxar/hdfs.go) for access
+HDFS.  [hdfs.go](https://github.com/zyxar/hdfs.go) is a CGO binding of
+`libhdfs.so`, which in turn invokes JNI to access HDFS.  This
+invocation often creates some Java threads as a side-effect.
+Unfortunately, these Java threads prevent `goprof` from profiling the
+Go programs, because `goprof` doesn't understand the format of Java
+threads and thus cannot take stack snapshots.
 
-    DISABLE_HDFS_TEST go test
-
-For how to setup an HDFS for development and test, please refer to
-http://godoc.org/github.com/wangkuiyi/file.
+[WebHDFS](http://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/WebHDFS.html)
+is my second trial.  `fs` uses WebHDFS clients
+[gowfs](https://github.com/vladimirvivien/gowfs).  But WebHDFS has a
+delay problem.  Say, if you list the directory immediately after
+creating a file, it is often that the newly created file is not in the
+list.  Therefore, it is highly recommended to use the native
+protobuf-based RPC system.
+   
