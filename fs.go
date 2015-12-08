@@ -229,10 +229,7 @@ func ReadDir(name string) ([]os.FileInfo, error) {
 	}
 }
 
-// Create a directory, along with any necessary parents.  If the
-// directory is already there, it returns nil.
-//
-// TODO(wyi): Add unit test for this function.
+// Create a directory, along with any necessary parents.  
 func Mkdir(name string) error {
 	switch fs, path := FsPath(name); fs {
 	case WebFS:
@@ -272,7 +269,6 @@ func Put(localFile, hdfsPath string) (bool, error) {
 	}
 }
 
-// TODO(wyi): Add unit test for Stat.
 func Stat(name string) (os.FileInfo, error) {
 	switch fs, p := FsPath(name); fs {
 	case WebFS:
