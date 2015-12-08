@@ -1,19 +1,26 @@
 // Package file provide uniform interface to access local filesystem,
 // Hadoop filesystem (HDFS), and an in-memory filesystem define in
-// https://github.com/wangkuiyi/file/inmemfs.  It uses WebHDFS
-// interface defined in
-// http://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-hdfs/WebHDFS.html
-// to access HDFS.  In order to connect to HDFS, you need to manually
-// invoke Initialize(), typically in main():
+// https://github.com/wangkuiyi/file/inmemfs.
+//
+// It accesses HDFS either via WebHDFS implemented in
+// github.com/vladimirvivien/gowfs", or the protobuf-based native RPC
+// implemented in write-support branch of github.com/colinmarc/hdfs.
+// The choice between these two options is via Go build tag webhdfs.
+// By default it uses the native RPC.
+//
+// In order to connect to HDFS, you need to manually invoke
+// HookupHDFS(), typically in main():
 /*
 	import (
 	  "flag"
-	  "github.com/wangkuiyi/file"
+	  "github.com/wangkuiyi/fs"
 	)
 
 	func main() {
+          namenode := flag.String("hdfsAddr", "localhost:9000", "Either namenode addr or WebHDFS addr.")
+          hdfsUser := flag.String("hdfsUser", "", "HDFS username. Could be empty.")
 	  flag.Parse()
-	  file.Initialize()
+	  fs.HookupHDFS(hdfsAddr, hdfsUser)
 	  ...
 	}
 */
@@ -29,7 +36,7 @@
 	<configuration>
 	  <property>
 		<name>fs.defaultFS</name>
-		<value>hdfs://localhost/</value>
+		<value>hdfs://localhost:9000</value>
 		<description>NameNode URI</description>
 	  </property>
 	  <property>
@@ -66,84 +73,132 @@
 // In above samples, it is assumed that $HADOOP_HOME is at
 // /Users/yiwang/hadoop. You would want to adapt the path to fit your
 // case.
-package file
+package fs
 
 import (
 	"errors"
-	"flag"
 	"fmt"
-	"github.com/vladimirvivien/gowfs"
-	"github.com/wangkuiyi/file/inmemfs"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/user"
 	"path"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/colinmarc/hdfs"
+	"github.com/vladimirvivien/gowfs"
 )
+
+type Type int
 
 const (
-	HDFSPrefix  = "hdfs:"
-	LocalPrefix = "file:"
-	InMemPrefix = "inmem:"
+	Local Type = iota
+	InMem Type = iota
+	WebFS Type = iota
+	HDFS  Type = iota
 )
 
-var (
-	namenode string
-	hdfsUser string
-	hdfs     *gowfs.FileSystem
-
-	CannotOpenFile        = errors.New("Cannot open file.")
-	UnknownFilesystemType = errors.New("Unknow filesystem type")
-)
-
-func init() {
-	flag.StringVar(&namenode, "namenode", "",
-		"HDFS namenode address. Empty for local access only.")
-	flag.StringVar(&hdfsUser, "hdfsuser", "",
-		"Empty for using OS login username.")
+func FsPath(path string) (Type, string) {
+	switch {
+	case strings.HasPrefix(path, "/webfs/"):
+		return WebFS, "/" + strings.TrimPrefix(path, "/webfs/")
+	case strings.HasPrefix(path, "/hdfs/"):
+		return HDFS, "/" + strings.TrimPrefix(path, "/hdfs/")
+	case strings.HasPrefix(path, "/inmem/"):
+		return InMem, "/" + strings.TrimPrefix(path, "/inmem/")
+	default:
+		return Local, path
+	}
 }
 
-// Initialize prepares a client to the HDFS "namenode" in the role of
-// "hdfsUser".  Also it tries to list files in the root directory to
-// test the connection to the namenode.  This function is typically
-// called in main() after the call of flag.Parse() parses flag
-// "namenode" and "hdfsUser".
-func Initialize() error {
-	if len(namenode) > 0 {
-		if len(hdfsUser) <= 0 {
-			hdfsUser = os.Getenv("USER")
-			if len(hdfsUser) <= 0 {
-				return errors.New("No HDFS username specified")
-			}
-		}
-		log.Printf("Connecting to HDFS %s@%s", hdfsUser, namenode)
-		fs, e := gowfs.NewFileSystem(gowfs.Configuration{
-			Addr: namenode, User: hdfsUser})
-		if e != nil {
-			return e
-		}
-		hdfs = fs
-		return testConnection()
-	} else {
-		log.Printf("Command line flag namenode not specified, no HDFS access.")
-	}
+// FileInfo implements os.FileInfo
+type FileInfo struct {
+	name string
+	size int64
+	mode os.FileMode
+	time int64
+	dir  bool
+}
+
+func (i FileInfo) Name() string {
+	return i.name
+}
+
+func (i FileInfo) Size() int64 {
+	return i.size
+}
+
+func (i FileInfo) Mode() os.FileMode {
+	return i.mode
+}
+
+func (i FileInfo) ModTime() time.Time {
+	return time.Unix(i.time, 0)
+}
+
+func (i FileInfo) IsDir() bool {
+	return i.dir
+}
+
+func (i FileInfo) Sys() interface{} {
 	return nil
 }
 
-// IsConnectedToHDFS returns if file has connected to HDFS namenode.
-func IsConnectedToHDFS() bool {
-	return hdfs != nil
+var (
+	webfs *gowfs.FileSystem
+	rpcfs *hdfs.Client
+)
+
+func HookupHDFS(namenode, webapi, role string) error {
+	err := ""
+
+	if len(role) <= 0 {
+		if u, e := user.Current(); e != nil {
+			err += fmt.Sprintf("Unknown current user: %v\n", e)
+		} else {
+			role = u.Username
+		}
+	}
+
+	log.Printf("Establish HDFS protobuf-based RPC connection as %s@%s", role, namenode)
+	if fs, e := hdfs.NewForUser(namenode, role); e != nil {
+		err += fmt.Sprintf("Cannot estabilish RPC connection to %s@%s: %v", role, namenode, e)
+	} else {
+		rpcfs = fs
+	}
+
+	log.Printf("Establish WebHDFS connection as %s@%s", role, webapi)
+	if fs, e := gowfs.NewFileSystem(gowfs.Configuration{Addr: webapi, User: role}); e != nil {
+		err += fmt.Sprintf("Cannot establish WebHDFS connection to %s@%s: %v", role, webapi, e)
+	} else {
+		webfs = fs
+		if e := testConnection(); e != nil {
+			err += fmt.Sprintf("Failed checking WebHDFS connection: %v", e)
+		}
+	}
+
+	if len(err) > 0 {
+		return fmt.Errorf(err)
+	}
+	return nil
 }
 
 func testConnection() error {
-	_, e := hdfs.ListStatus(gowfs.Path{Name: "/"})
+	_, e := webfs.ListStatus(gowfs.Path{Name: "/"})
 	if e != nil {
 		return fmt.Errorf("Unable to connect to server: %v", e)
 	}
-	log.Printf("Connected to %s. OK.\n", hdfs.Config.Addr)
+	log.Printf("Connected to %s. OK.\n", webfs.Config.Addr)
 	return nil
 }
+
+var (
+	errNoWebFS = errors.New("Have not established WebHDFS connection")
+	errNoRpcFS = errors.New("Have not established protobuf-based RPC connection")
+)
 
 // Create returns the writer end of a Go pipe and starts a goroutine
 // that copies from the reader end of the pipe to either a local file
@@ -151,27 +206,16 @@ func testConnection() error {
 // expected to write into the returned writer end.  After writing, the
 // caller must close the writer end to acknowledge the EOF.
 func Create(name string) (io.WriteCloser, error) {
-	r, w := io.Pipe()
-	switch {
-	case strings.HasPrefix(name, LocalPrefix):
-		f, e := os.Create(strings.TrimPrefix(name, LocalPrefix))
-		if e != nil {
-			r.Close()
-			w.Close()
-			return nil, errors.New("Cannot create file.")
+	switch fs, path := FsPath(name); fs {
+	case WebFS:
+		if webfs == nil {
+			return nil, errNoWebFS
 		}
+		// gowfs.Create requires a reader parameter.
+		r, w := io.Pipe()
 		go func() {
-			defer f.Close()
-			defer r.Close()
-			_, e := io.Copy(f, r)
-			if e != nil {
-				log.Fatalf("Failed piping to file %s: %v", name, e)
-			}
-		}()
-	case strings.HasPrefix(name, HDFSPrefix):
-		go func() {
-			_, e := hdfs.Create(r,
-				gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)},
+			_, e := webfs.Create(r,
+				gowfs.Path{Name: path},
 				true, // overwrite
 				0, 0, // default blocksize and replica
 				0700, // only the owner can access
@@ -179,153 +223,102 @@ func Create(name string) (io.WriteCloser, error) {
 			if e != nil {
 				r.Close()
 				w.Close()
-				log.Fatalf("Failed piping to file %s: %v", name, e)
+				log.Panicf("Failed piping to file %s: %v", name, e)
 			}
 		}()
-	case strings.HasPrefix(name, InMemPrefix):
-		f := inmemfs.Create(strings.TrimPrefix(name, InMemPrefix))
-		go func() {
-			defer r.Close()
-			_, e := io.Copy(f, r)
-			if e != nil {
-				log.Fatalf("Failed piping to file %s: %v", name, e)
-			}
-		}()
+		return w, nil
+	case HDFS:
+		if rpcfs == nil {
+			return nil, errNoRpcFS
+		}
+		return rpcfs.Create(path)
+	case InMem:
+		return DefaultInMemFS.Create(path), nil
 	default:
-		r.Close()
-		w.Close()
-		return nil, UnknownFilesystemType
+		return os.Create(path)
 	}
-	return w, nil
 }
 
 func Open(name string) (io.ReadCloser, error) {
-	switch {
-	case strings.HasPrefix(name, LocalPrefix):
-		f, e := os.Open(strings.TrimPrefix(name, LocalPrefix))
-		if e != nil {
-			return nil, CannotOpenFile
+	switch fs, path := FsPath(name); fs {
+	case WebFS:
+		if webfs == nil {
+			return nil, errNoWebFS
 		}
-		return f, nil
-	case strings.HasPrefix(name, HDFSPrefix):
-		r, e := hdfs.Open(
-			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)},
-			0, 0, 0) // default offset, lenght and buffersize
-		if e != nil {
-			return nil, CannotOpenFile
+		return webfs.Open(gowfs.Path{Name: path}, 0, 0, 0) // default offset, lenght and buffersize
+	case HDFS:
+		if rpcfs == nil {
+			return nil, errNoRpcFS
 		}
-		return r, nil
-	case strings.HasPrefix(name, InMemPrefix):
-		r, e := inmemfs.Open(strings.TrimPrefix(name, InMemPrefix))
-		if e != nil {
-			return nil, CannotOpenFile
-		}
-		return r, nil
+		return rpcfs.Open(path)
+	case InMem:
+		return DefaultInMemFS.Open(path)
+	default:
+		return os.Open(path)
 	}
-	return nil, UnknownFilesystemType
 }
 
-type Info struct {
-	Name  string
-	Size  int64
-	IsDir bool
-}
+func ReadDir(name string) ([]os.FileInfo, error) {
+	switch fs, path := FsPath(name); fs {
+	case WebFS:
+		if webfs == nil {
+			return nil, errNoWebFS
+		}
 
-func List(name string) ([]Info, error) {
-	switch {
-	case strings.HasPrefix(name, LocalPrefix):
-		is, e := ioutil.ReadDir(strings.TrimPrefix(name, LocalPrefix))
+		if ok, e := (&gowfs.FsShell{FileSystem: webfs, WorkingPath: "/"}).Exists(path); !ok {
+			return nil, &os.PathError{
+				Op:   "ReadDir",
+				Path: path,
+				Err:  os.ErrNotExist}
+		} else if e != nil {
+			return nil, e
+		}
+
+		is, e := webfs.ListStatus(gowfs.Path{Name: path})
 		if e != nil {
 			return nil, e
 		}
-		if len(is) > 0 {
-			ss := make([]Info, len(is))
-			for i, s := range is {
-				ss[i].Name = s.Name()
-				ss[i].Size = s.Size()
-				ss[i].IsDir = s.IsDir()
-			}
-			return ss, nil
+		ss := make([]os.FileInfo, 0, len(is))
+		for _, s := range is {
+			mode, _ := strconv.ParseUint(s.Permission, 8, 32)
+			ss = append(ss, &FileInfo{
+				name: s.PathSuffix,
+				size: s.Length,
+				mode: os.FileMode(mode),
+				time: s.ModificationTime,
+				dir:  (s.Type == "DIRECTORY"),
+			})
 		}
-		return nil, nil
-	case strings.HasPrefix(name, HDFSPrefix):
-		is, e := hdfs.ListStatus(
-			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)})
-		if e != nil {
-			return nil, e
-		}
-		if len(is) > 0 {
-			ss := make([]Info, len(is))
-			for i, s := range is {
-				ss[i].Name = s.PathSuffix
-				ss[i].Size = s.Length
-				ss[i].IsDir = (s.Type == "DIRECTORY")
-			}
-			return ss, nil
-		}
-		return nil, nil
-	case strings.HasPrefix(name, InMemPrefix):
-		is := inmemfs.List(strings.TrimPrefix(name, InMemPrefix))
-		if len(is) > 0 {
-			ss := make([]Info, len(is))
-			for i, s := range is {
-				ss[i].Name = s.Name
-				ss[i].Size = s.Size
-				ss[i].IsDir = s.IsDir
-			}
-			return ss, nil
-		}
-		return nil, nil
+		return ss, nil
+	case HDFS:
+		return rpcfs.ReadDir(path)
+	case InMem:
+		return DefaultInMemFS.ReadDir(path)
+	default:
+		return ioutil.ReadDir(path)
 	}
-	return nil, UnknownFilesystemType
-}
-
-// Exists returns false, if there is any error.
-func Exists(name string) (bool, error) {
-	switch {
-	case strings.HasPrefix(name, LocalPrefix):
-		_, e := os.Stat(strings.TrimPrefix(name, LocalPrefix))
-		if e != nil {
-			if os.IsNotExist(e) {
-				return false, nil
-			} else {
-				return false, fmt.Errorf("Exists(%s): %v", name, e)
-			}
-		}
-		return true, nil
-	case strings.HasPrefix(name, HDFSPrefix):
-		fs := gowfs.FsShell{hdfs, "/"}
-		// TODO(wyi): confirm that fs.Exists returns false when error.
-		return fs.Exists(strings.TrimPrefix(name, HDFSPrefix))
-	case strings.HasPrefix(name, InMemPrefix):
-		return inmemfs.Exists(strings.TrimPrefix(name, InMemPrefix)),
-			nil
-	}
-	return false, UnknownFilesystemType
 }
 
 // Create a directory, along with any necessary parents.  If the
 // directory is already there, it returns nil.
 //
 // TODO(wyi): Add unit test for this function.
-func MkDir(name string) error {
-	if len(strings.Join(strings.Split(name, ":")[1:], "")) == 0 {
-		// As path.Dir("file:/a") returns "file:" instead of "file:/".
-		return nil
-	}
-
-	switch {
-	case strings.HasPrefix(name, LocalPrefix):
-		return os.MkdirAll(strings.TrimPrefix(name, LocalPrefix), 0777)
-	case strings.HasPrefix(name, HDFSPrefix):
-		_, e := hdfs.MkDirs(
-			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)}, 0777)
+func Mkdir(name string) error {
+	switch fs, path := FsPath(name); fs {
+	case WebFS:
+		if webfs == nil {
+			return errNoWebFS
+		}
+		_, e := webfs.MkDirs(gowfs.Path{Name: path}, 0777)
 		return e
-	case strings.HasPrefix(name, InMemPrefix):
-		inmemfs.MkDir(strings.TrimPrefix(name, InMemPrefix))
+	case HDFS:
+		return rpcfs.MkdirAll(path, 0777)
+	case InMem:
+		DefaultInMemFS.MkDir(path)
 		return nil
+	default:
+		return os.MkdirAll(path, 0777)
 	}
-	return UnknownFilesystemType
 }
 
 // Put copy a local file to HDFS.  It overwrites if the destination
@@ -335,44 +328,46 @@ func MkDir(name string) error {
 // "github.com/vladimirvivien/gowfs", this directory must not be the
 // root directory "hdfs:/".
 func Put(localFile, hdfsPath string) (bool, error) {
-	if !strings.HasPrefix(localFile, LocalPrefix) {
-		return false, fmt.Errorf("localFile %s has no LocalPrefix", localFile)
+	if webfs == nil {
+		return false, errNoWebFS
 	}
-	localFile = strings.TrimPrefix(localFile, LocalPrefix)
 
-	if !strings.HasPrefix(hdfsPath, HDFSPrefix) {
-		return false, fmt.Errorf("hdfsPath %s has no HDFSPrefix", hdfsPath)
+	if fs, src := FsPath(localFile); fs != Local {
+		return false, fmt.Errorf("localFile %s must be local", localFile)
+	} else if fs, dest := FsPath(hdfsPath); fs != WebFS {
+		return false, fmt.Errorf("hdfsPath %s must refer to WebHDFS", hdfsPath)
+	} else {
+		fs := &gowfs.FsShell{FileSystem: webfs, WorkingPath: "/"}
+		return fs.Put(src, dest, true)
 	}
-	hdfsPath = strings.TrimPrefix(hdfsPath, HDFSPrefix)
-
-	fs := &gowfs.FsShell{hdfs, "/"}
-	return fs.Put(localFile, hdfsPath, true)
 }
 
 // TODO(wyi): Add unit test for Stat.
-func Stat(name string) (Info, error) {
-	switch {
-	case strings.HasPrefix(name, LocalPrefix):
-		if fi, e := os.Stat(strings.TrimPrefix(name, LocalPrefix)); e != nil {
-			return Info{}, fmt.Errorf("os.Stat(%s): %v", name, e)
-		} else {
-			return Info{path.Base(name), fi.Size(), fi.IsDir()}, nil
+func Stat(name string) (os.FileInfo, error) {
+	switch fs, p := FsPath(name); fs {
+	case WebFS:
+		if webfs == nil {
+			return nil, errNoWebFS
 		}
-	case strings.HasPrefix(name, HDFSPrefix):
-		fs, e := hdfs.GetFileStatus(
-			gowfs.Path{Name: strings.TrimPrefix(name, HDFSPrefix)})
-		if e != nil {
-			return Info{}, fmt.Errorf("hdfs.GetFileStatus(%s): %v", name, e)
+		if fs, e := webfs.GetFileStatus(gowfs.Path{Name: p}); e != nil {
+			return nil, &os.PathError{
+				Op:   "Stat",
+				Path: name + e.Error(), // BUG(y): Hacky way to return the real error.
+				Err:  os.ErrNotExist}   //BUG(y): for whatever error, returns os.PathError.
 		} else {
-			return Info{path.Base(name), fs.Length, fs.Type == "DIRECTORY"}, nil
+			mode, _ := strconv.ParseUint(fs.Permission, 8, 32)
+			return &FileInfo{
+				name: path.Base(p),
+				size: fs.Length,
+				mode: os.FileMode(mode),
+				time: fs.ModificationTime,
+				dir:  fs.Type == "DIRECTORY"}, nil
 		}
-	case strings.HasPrefix(name, InMemPrefix):
-		fi := inmemfs.Stat(strings.TrimPrefix(name, InMemPrefix))
-		if len(fi.Name) > 0 {
-			return Info{fi.Name, fi.Size, fi.IsDir}, nil
-		} else {
-			return Info{}, fmt.Errorf("inmemfs.Info(%s): File not exist", name)
-		}
+	case HDFS:
+		return rpcfs.Stat(p)
+	case InMem:
+		return DefaultInMemFS.Stat(p)
+	default:
+		return os.Stat(p)
 	}
-	return Info{}, UnknownFilesystemType
 }

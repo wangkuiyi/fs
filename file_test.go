@@ -1,169 +1,82 @@
-package file
+package fs
 
 import (
-	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
+	"path"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const (
 	testingContent = "Hello World!"
 )
 
-func TestInitialize(t *testing.T) {
-	if os.Getenv("DISABLE_HDFS_TEST") != "" {
-		t.SkipNow()
-		return
-	}
-	namenode = "localhost:50070"
-	if e := Initialize(); e != nil {
-		t.Errorf("Failed connect to HDFS: %v", e)
-	}
-}
-
-func ExampleCreate(name string, t *testing.T) {
-	w, e := Create(name)
-	if e != nil {
-		t.Fatalf("Create failed: %v", e)
-	}
-	defer w.Close()
-
-	en := json.NewEncoder(w)
-	e = en.Encode(testingContent)
-	if e != nil {
-		t.Errorf("Failed encoding: %v", e)
-	}
-}
-
-func ExampleOpen(name string, t *testing.T) {
-	r, e := Open(name)
-	if e != nil {
-		t.Fatalf("Open failed: %v", e)
-	}
-	defer r.Close()
-
-	var m string
-	de := json.NewDecoder(r)
-	e = de.Decode(&m)
-	if e != nil {
-		t.Errorf("Failed decoding: %v", e)
-	}
-	if m != testingContent {
-		t.Errorf("Expecting %s, got %s", testingContent, m)
-	}
-}
-
-func ExampleList(name, expected string, t *testing.T) {
-	is, e := List(name)
-	if e != nil {
-		t.Errorf("Failed List(%s): %v", name, e)
-	}
-	foundExpected := false
-	for _, s := range is {
-		if s.Name == expected {
-			foundExpected = true
+func init() {
+	if os.Getenv("DISABLE_HDFS_TEST") == "" {
+		if e := HookupHDFS("localhost:9000", "localhost:50070", ""); e != nil {
+			log.Panicf("Failed connect to HDFS: %v", e)
 		}
 	}
-	if !foundExpected {
-		t.Errorf("Didn't found expected file %s", expected)
+}
+
+func testSuite(t *testing.T, protocol string) {
+	dir := path.Join(protocol, fmt.Sprintf("tmp/test/github.com/wangkuiyi/file/%v", time.Now().UnixNano()))
+	file := path.Join(dir, "hello.txt")
+	content := "Hello World!\n"
+	assert := assert.New(t)
+
+	ls, e := ReadDir(dir) // ReadDir on not existing dir
+	assert.NotNil(e)
+	assert.True(os.IsNotExist(e))
+	assert.Equal(0, len(ls))
+
+	_, e = Stat(file) // Stat on not existing file
+	assert.NotNil(e)
+	assert.True(os.IsNotExist(e))
+
+	if assert.Nil(Mkdir(dir)) { // Mkdir
+		ls, e := ReadDir(dir) // ReadDir on existing but empty dir
+		assert.Nil(e)
+		assert.Equal(0, len(ls))
+
+		w, e := Create(file) // Create
+		if assert.Nil(e) {
+			fmt.Fprintf(w, content)
+			w.Close()
+
+			ls, e = ReadDir(dir) // ReadDir on existing and non-empty dir
+			assert.Nil(e)
+			assert.Equal(1, len(ls))
+
+			_, e = Stat(file) // Stat on exisitng file
+			assert.Nil(e)
+			assert.False(os.IsNotExist(e))
+
+			r, e := Open(file) // Read existing file
+			if assert.Nil(e) {
+				b, e := ioutil.ReadAll(r)
+				assert.Nil(e)
+				assert.Equal(string(b), content)
+				r.Close()
+			}
+		}
 	}
 }
 
-func ExampleExists(name string, expected bool, t *testing.T) {
-	b, e := Exists(name)
-	if e != nil {
-		t.Error("Unexptected error: ", e)
-	}
-	if b != expected {
-		t.Errorf("Expecting existence of %s is %v, got %v", name, expected, b)
-	}
+func TestWebFS(t *testing.T) {
+	testSuite(t, "/webfs")
 }
-
-func ExampleMkDir(name string, t *testing.T) {
-	e := MkDir(name)
-	if e != nil {
-		t.Errorf("Unexpected failure Mkdir(%s): %v", name, e)
-	}
+func TestHDFS(t *testing.T) {
+	testSuite(t, "/hdfs")
 }
-
-func TestCreateLocal(t *testing.T) {
-	ExampleCreate("file:/tmp/b", t)
+func TestInMemFS(t *testing.T) {
+	testSuite(t, "/inmem")
 }
-
-func TestCreateHDFS(t *testing.T) {
-	if os.Getenv("DISABLE_HDFS_TEST") != "" {
-		t.SkipNow()
-		return
-	}
-	ExampleCreate("hdfs:/tmpb", t)
-}
-
-func TestCreateInMem(t *testing.T) {
-	ExampleCreate("inmem:tmp/b", t)
-}
-
-func TestOpenLocal(t *testing.T) {
-	ExampleCreate("file:/tmp/b", t)
-	ExampleOpen("file:/tmp/b", t)
-}
-
-func TestOpenHDFS(t *testing.T) {
-	if os.Getenv("DISABLE_HDFS_TEST") != "" {
-		t.SkipNow()
-		return
-	}
-	ExampleCreate("hdfs:/tmpb", t)
-	ExampleOpen("inmem:tmp/b", t)
-}
-
-func TestOpenInMem(t *testing.T) {
-	ExampleCreate("inmem:tmp/b", t)
-	ExampleOpen("inmem:tmp/b", t)
-}
-
-func TestListLocal(t *testing.T) {
-	ExampleCreate("file:/tmp/b", t)
-	ExampleList("file:/tmp", "b", t)
-}
-
-func TestListHDFS(t *testing.T) {
-	if os.Getenv("DISABLE_HDFS_TEST") != "" {
-		t.SkipNow()
-		return
-	}
-	ExampleCreate("hdfs:/tmpb", t)
-	ExampleList("hdfs:/", "tmpb", t)
-}
-
-func TestListInMem(t *testing.T) {
-	ExampleCreate("inmem:tmp/b", t)
-	ExampleList("inmem:tmp/", "b", t)
-}
-
-func TestExistsLocal(t *testing.T) {
-	ExampleCreate("file:/tmp/b", t)
-	ExampleExists("file:/tmp/b", true, t)
-	ExampleExists("file:/tmp", true, t)
-	ExampleExists("file:/something-that-must-not-exist", false, t)
-}
-
-func TestExistsHDFS(t *testing.T) {
-	if os.Getenv("DISABLE_HDFS_TEST") != "" {
-		t.SkipNow()
-		return
-	}
-	ExampleCreate("hdfs:/tmpb", t)
-	ExampleExists("hdfs:/tmpb", true, t)
-	ExampleExists("hdfs:/", true, t)
-	ExampleExists("hdfs:/something-that-must-not-exist", false, t)
-}
-
-func TestExistsInMem(t *testing.T) {
-	ExampleCreate("inmem:/tmp/b", t)
-	ExampleExists("inmem:/tmp/b", true, t)
-	ExampleExists("inmem:/something-that-must-not-exist", false, t)
-}
-
-func TestMkDirInMem(t *testing.T) {
-	ExampleMkDir("inmem:/tmp/dir", t)
+func TestLocalFS(t *testing.T) {
+	testSuite(t, "/")
 }
