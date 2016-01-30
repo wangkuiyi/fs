@@ -92,20 +92,25 @@ func HookupHDFS(namenode, webapi, role string) error {
 		}
 	}
 
-	log.Printf("Establish HDFS protobuf-based RPC connection as %s@%s", role, namenode)
-	if fs, e := hdfs.NewForUser(namenode, role); e != nil {
-		err += fmt.Sprintf("Cannot estabilish RPC connection to %s@%s: %v", role, namenode, e)
-	} else {
-		rpcfs = fs
+	if len(namenode) > 0 {
+		log.Printf("Establish HDFS protobuf-based RPC connection as %s@%s", role, namenode)
+		if fs, e := hdfs.NewForUser(namenode, role); e != nil {
+			err += fmt.Sprintf("Cannot estabilish RPC connection to %s@%s: %v", role, namenode, e)
+		} else {
+			rpcfs = fs
+		}
 	}
 
-	log.Printf("Establish WebHDFS connection as %s@%s", role, webapi)
-	if fs, e := gowfs.NewFileSystem(gowfs.Configuration{Addr: webapi, User: role}); e != nil {
-		err += fmt.Sprintf("Cannot establish WebHDFS connection to %s@%s: %v", role, webapi, e)
-	} else {
-		webfs = fs
-		if e := testConnection(); e != nil {
-			err += fmt.Sprintf("Failed checking WebHDFS connection: %v", e)
+	if len(webapi) > 0 {
+		log.Printf("Establish WebHDFS connection as %s@%s", role, webapi)
+		if fs, e := gowfs.NewFileSystem(gowfs.Configuration{Addr: webapi, User: role}); e != nil {
+			err += fmt.Sprintf("Cannot establish WebHDFS connection to %s@%s: %v", role, webapi, e)
+		} else {
+			if e := testConnection(); e != nil {
+				err += fmt.Sprintf("Failed checking WebHDFS connection: %v", e)
+			} else {
+				webfs = fs
+			}
 		}
 	}
 
@@ -229,10 +234,7 @@ func ReadDir(name string) ([]os.FileInfo, error) {
 	}
 }
 
-// Create a directory, along with any necessary parents.  If the
-// directory is already there, it returns nil.
-//
-// TODO(wyi): Add unit test for this function.
+// Create a directory, along with any necessary parents.
 func Mkdir(name string) error {
 	switch fs, path := FsPath(name); fs {
 	case WebFS:
@@ -272,7 +274,6 @@ func Put(localFile, hdfsPath string) (bool, error) {
 	}
 }
 
-// TODO(wyi): Add unit test for Stat.
 func Stat(name string) (os.FileInfo, error) {
 	switch fs, p := FsPath(name); fs {
 	case WebFS:
@@ -299,5 +300,20 @@ func Stat(name string) (os.FileInfo, error) {
 		return DefaultInMemFS.Stat(p)
 	default:
 		return os.Stat(p)
+	}
+}
+
+func Rename(old, new string) error {
+	fsOld, pOld := FsPath(old)
+	fsNew, pNew := FsPath(new)
+	if fsOld != fsNew {
+		return fmt.Errorf("fs %v and %v don't match", fsOld, fsNew)
+	}
+	switch fsOld {
+	case WebFS, HDFS, InMem:
+		// TODO(y): Implement it
+		return fmt.Errorf("Reanme not implemented with WebFS, HDFS and InMem")
+	default:
+		return os.Rename(pOld, pNew)
 	}
 }

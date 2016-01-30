@@ -1,5 +1,8 @@
 # `fs`
 
+[![Master Build Status](https://travis-ci.org/wangkuiyi/fs.png?branch=master)](https://travis-ci.org/wangkuiyi/fs)
+[![Develop Build Status](https://travis-ci.org/wangkuiyi/fs.png?branch=develop)](https://travis-ci.org/wangkuiyi/fs)
+
 `fs` is a Go API with the same syntax and semantic as standard package
 `os` for accessing
 

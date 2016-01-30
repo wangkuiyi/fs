@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,16 +17,19 @@ const (
 	testingContent = "Hello World!"
 )
 
+var (
+	namenode = flag.String("fs.namenode", "", "Network address of HDFS namenode. Usually localhost:9000")
+	webapi   = flag.String("fs.webapi", "", "Network address of WebHDFS server. Usually localhost:50070")
+)
+
 func init() {
-	if os.Getenv("DISABLE_HDFS_TEST") == "" {
-		if e := HookupHDFS("localhost:9000", "localhost:50070", ""); e != nil {
-			log.Panicf("Failed connect to HDFS: %v", e)
-		}
+	if e := HookupHDFS(*namenode, *webapi, ""); e != nil {
+		log.Panicf("Failed connect to HDFS: %v", e)
 	}
 }
 
 func testSuite(t *testing.T, protocol string) {
-	dir := path.Join(protocol, fmt.Sprintf("tmp/test/github.com/wangkuiyi/file/%v", time.Now().UnixNano()))
+	dir := path.Join(protocol, fmt.Sprintf("tmp/test/github.com/wangkuiyi/fs/%v", time.Now().UnixNano()))
 	file := path.Join(dir, "hello.txt")
 	content := "Hello World!\n"
 	assert := assert.New(t)
@@ -73,12 +77,12 @@ func testSuite(t *testing.T, protocol string) {
 }
 
 func TestWebFS(t *testing.T) {
-	if os.Getenv("DISABLE_HDFS_TEST") == "" {
+	if len(*webapi) > 0 {
 		testSuite(t, "/webfs")
 	}
 }
 func TestHDFS(t *testing.T) {
-	if os.Getenv("DISABLE_HDFS_TEST") == "" {
+	if len(*namenode) > 0 {
 		testSuite(t, "/hdfs")
 	}
 }
